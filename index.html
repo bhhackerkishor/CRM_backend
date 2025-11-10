@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Send WhatsApp Message</title>
+</head>
+<body style="font-family: sans-serif; padding: 30px; background: #f8fafc;">
+  <h2>📨 Send WhatsApp Message via RegalMints CRM Backend</h2>
+
+  <label>Recipient Phone (with country code):</label><br />
+  <input id="phone" type="text" placeholder="91XXXXXXXXXX" style="padding:8px;width:250px"><br /><br />
+
+  <label>Message:</label><br />
+  <textarea id="message" placeholder="Type your message..." style="width:250px;height:100px;padding:8px"></textarea><br /><br />
+
+  <button id="sendBtn" style="padding:10px 20px;background:#25d366;color:white;border:none;border-radius:5px;cursor:pointer">
+    Send Message
+  </button>
+
+  <p id="status" style="margin-top:20px;color:green"></p>
+
+  <script>
+    document.getElementById("sendBtn").addEventListener("click", async () => {
+      const to = document.getElementById("phone").value.trim();
+      const message = document.getElementById("message").value.trim();
+      const status = document.getElementById("status");
+
+      if (!to || !message) {
+        alert("Please enter phone and message!");
+        return;
+      }
+
+      status.innerText = "Sending message...";
+
+      try {
+        const response = await fetch("http://localhost:5000/api/send-message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to, message }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          status.innerText = "✅ Message sent successfully!";
+        } else {
+          status.innerText = "❌ Error: " + (data.error || "Unknown error");
+        }
+      } catch (err) {
+        console.error(err);
+        status.innerText = "⚠️ Failed to send message.";
+      }
+    });
+  </script>
+</body>
+</html>
