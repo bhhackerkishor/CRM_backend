@@ -53,6 +53,17 @@ app.post("/api/send-message", async (req, res) => {
         },
       }
     );
+
+    // inside /api/send-message
+const saved = await Message.create({
+    from: process.env.PHONE_NUMBER_ID, // your business ID
+    to,
+    message,
+    direction: "out",
+    status: "sent",
+  });
+  io.emit("newMessage", saved);
+  
     console.log(response.data)
 
     res.status(200).json({ success: true, data: response.data });
@@ -75,11 +86,18 @@ app.post("/api/webhook", async (req, res) => {
   
         console.log("📩 New message from:", from, "→", text);
   
-        await Message.create({
-          from,
-          to: process.env.PHONE_NUMBER_ID,
-          message: text,
-        });
+        
+        const newMsg = await Message.create({
+            from,
+            to: process.env.PHONE_NUMBER_ID,
+            message: text,
+            direction: "in",
+            status: "delivered",
+          });
+          io.emit("newMessage", newMsg);          
+        
+        
+        
       }
   
       res.sendStatus(200);
