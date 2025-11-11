@@ -3,40 +3,43 @@ import axios from "axios";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import cors from "cors";
-
-
 import mongoose from "mongoose";
-// models
-import Message from "./models/Message.js"; // import the model
+import http from "http";           // ✅ Needed for socket.io
+import { Server } from "socket.io";
+import Message from "./models/Message.js";
 
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
+// ✅ Create HTTP + Socket server
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // adjust to your frontend origin in production
+    methods: ["GET", "POST"],
+  },
+});
 
 // ✅ MongoDB connection
-
-mongoose.connect(process.env.MONGO_URI, {
+mongoose
+  .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-
-
-
 // ✅ Test route
 app.get("/", (req, res) => {
-  res.send("RegalMints CRM WhatsApp Backend Running 🚀");
+  res.send("ChatCom (RegalMints CRM) Backend Running 🚀");
 });
 
-// ✅ Send Message route
+// ✅ Send WhatsApp Message
 app.post("/api/send-message", async (req, res) => {
   try {
     const { to, message } = req.body;
-    console.log(req.body);
 
     const response = await axios.post(
       `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
@@ -53,8 +56,7 @@ app.post("/api/send-message", async (req, res) => {
         },
       }
     );
-
-    // inside /api/send-message
+// inside /api/send-message
 const saved = await Message.create({
     from: process.env.PHONE_NUMBER_ID, // your business ID
     to,
@@ -62,63 +64,97 @@ const saved = await Message.create({
     direction: "out",
     status: "sent",
   });
-  io.emit("newMessage", saved);
   
-    console.log(response.data)
 
-    res.status(200).json({ success: true, data: response.data });
+    // ✅ Emit event to all clients (real-time)
+    io.emit("newMessage", saved);
+
+    res.status(200).json({ success: true, data: saved });
   } catch (error) {
     console.error("Error sending message:", error.response?.data || error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// ✅ Webhook verification (for incoming messages)
+// ✅ Webhook Verification
+app.get("/api/webhook", (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token && mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("✅ Webhook verified successfully!");
+    res.status(200).send(challenge);
+  } else {
+    console.log("❌ Verification failed.");
+    res.sendStatus(403);
+  }
+});
+
+// ✅ Webhook Receiver
 app.post("/api/webhook", async (req, res) => {
-    try {
-      const data = req.body;
-      console.log("Incoming message:", JSON.stringify(req.body, null, 2));
-  
-      if (data.object && data.entry?.[0]?.changes?.[0]?.value?.messages) {
-        const messageInfo = data.entry[0].changes[0].value.messages[0];
-        const from = messageInfo.from;
-        const text = messageInfo.text?.body || "non-text message";
-  
-        console.log("📩 New message from:", from, "→", text);
-  
-        
-        const newMsg = await Message.create({
-            from,
-            to: process.env.PHONE_NUMBER_ID,
-            message: text,
-            direction: "in",
-            status: "delivered",
-          });
-          io.emit("newMessage", newMsg);          
-        
-        
-        
-      }
-  
-      res.sendStatus(200);
-    } catch (err) {
-      console.error("❌ Webhook error:", err.message);
-      res.sendStatus(500);
+  try {
+    const data = req.body;
+
+    if (data.object && data.entry?.[0]?.changes?.[0]?.value?.messages) {
+      const messageInfo = data.entry[0].changes[0].value.messages[0];
+      const from = messageInfo.from;
+      const text = messageInfo.text?.body || "non-text message";
+
+      const newMsg = await Message.create({
+        from,
+        to: process.env.PHONE_NUMBER_ID,
+        message: text,
+        direction: "in",
+        status: "delivered",
+      });
+      
+
+      // ✅ Emit real-time update to clients
+      io.emit("newMessage", newMsg);
     }
-  });
 
+    res.sendStatus(200);
+  } catch (err) {
+    console.error("❌ Webhook error:", err.message);
+    res.sendStatus(500);
+  }
+});
 
-
+// ✅ Get all messages
 app.get("/api/messages", async (req, res) => {
-    try {
-      const messages = await Message.find().sort({ timestamp: -1 });
-      res.json(messages);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-  
+  try {
+    const messages = await Message.find().sort({ timestamp: 1 });
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-app.listen(process.env.PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${process.env.PORT}`)
+// ✅ Socket.io connections
+const userActivity = {}; // track typing & last seen
+
+io.on("connection", (socket) => {
+  console.log("🟢 User connected:", socket.id);
+
+  // Typing event
+  socket.on("typing", (user) => {
+    userActivity[user] = { typing: true, lastSeen: new Date() };
+    io.emit("userActivity", userActivity);
+  });
+
+  socket.on("stopTyping", (user) => {
+    userActivity[user] = { typing: false, lastSeen: new Date() };
+    io.emit("userActivity", userActivity);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("🔴 User disconnected:", socket.id);
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
 );
