@@ -35,23 +35,35 @@ async function sendText(to, text) {
 
 async function sendInteractive(to, data) {
   console.log(`📩 Sending mediaButtons node to ${to}`);
-  await axios.post(
-    `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "button",
-        body: { text: data.title || "Choose an option:" },
-        action: {
-          buttons: data.buttons.map((b, i) => ({
-            type: "reply",
-            reply: { id: `btn-${i}`, title: b },
-          })),
-        },
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      header: {},
+      body: { text: data.title || "Choose an option:" },
+      action: {
+        buttons: data.buttons.map((b, i) => ({
+          type: "reply",
+          reply: { id: `btn-${i}`, title: b },
+        })),
       },
     },
+  };
+
+  // ✅ Add image if provided
+  if (data.image) {
+    payload.interactive.header = {
+      type: "image",
+      image: { link: data.image }, // URL directly
+    };
+  }
+
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    payload,
     {
       headers: {
         Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
@@ -60,7 +72,14 @@ async function sendInteractive(to, data) {
     }
   );
 
-  await Message.create({ from: "system", to, message: data.title });
+  await Message.create({
+    from: "system",
+    to,
+    message: data.title,
+    direction: "out",
+    status: "sent",
+    media: data.image || null,
+  });
 }
 
 // 🧠 Run Flow Logic
