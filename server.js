@@ -7,6 +7,21 @@ import mongoose from "mongoose";
 import http from "http";           // ✅ Needed for socket.io
 import { Server } from "socket.io";
 import Message from "./models/Message.js";
+//import flowRoutes from "./routes/flowRoutes.js";
+import { runFlow ,continueFlowFromButton} from "./flowRunner.js";
+//import flowData from "./sampleFlow.json" assert { type: "json" }; // export your flow as JSON
+
+
+
+
+
+
+
+
+
+
+
+
 
 dotenv.config();
 const app = express();
@@ -34,6 +49,58 @@ mongoose
 // ✅ Test route
 app.get("/", (req, res) => {
   res.send("ChatCom (RegalMints CRM) Backend Running 🚀");
+});
+
+app.post("/api/run-flow", async (req, res) => {
+  const { to } = req.body;
+  if (!to) return res.status(400).json({ error: "Missing phone number" });
+  try {
+    await runFlow(to);
+    res.json({ success: true, message: "Flow triggered successfully" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+//  Routes
+
+//app.use("/api/flows", flowRoutes);
+
+
+app.post('/api/broadcast', async (req, res) => {
+  const { message, to } = req.body;
+
+  if (!message || !to) {
+    return res.status(400).json({ error: 'Message and recipients required' });
+  }
+
+  const recipients = to.split(',').map(num => num.trim().replace(/^\+/, '')); // Clean numbers
+  const results = [];
+
+  for (const recipient of recipients) {
+    try {
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        {
+          messaging_product: 'whatsapp',
+          to: recipient,
+          type: 'text',
+          text: { body: message }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.ACCESS_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      results.push({ recipient, status: 'sent', messageId: response.data.messages[0].id });
+    } catch (error) {
+      results.push({ recipient, status: 'failed', error: error.response?.data?.error?.message || error.message });
+    }
+  }
+
+  res.json({ results, total: recipients.length, success: results.filter(r => r.status === 'sent').length });
 });
 
 // ✅ Send WhatsApp Message
@@ -97,9 +164,12 @@ app.post("/api/webhook", async (req, res) => {
   try {
     const data = req.body;
 
+    const messageInfo = data.entry[0].changes[0].value.messages[0];
+    const from = messageInfo.from;
+
     if (data.object && data.entry?.[0]?.changes?.[0]?.value?.messages) {
-      const messageInfo = data.entry[0].changes[0].value.messages[0];
-      const from = messageInfo.from;
+     
+     
       const text = messageInfo.text?.body || "non-text message";
 
       const newMsg = await Message.create({
@@ -109,11 +179,18 @@ app.post("/api/webhook", async (req, res) => {
         direction: "in",
         status: "delivered",
       });
-      
-
+  
       // ✅ Emit real-time update to clients
       io.emit("newMessage", newMsg);
     }
+    if (messageInfo.interactive?.button_reply) {
+      const replyId = messageInfo.interactive.button_reply.id; // like "btn-0"
+      console.log(`🟢 Button pressed: ${replyId} by ${from}`);
+      await continueFlowFromButton(from, replyId);
+    } else {
+      console.log("💬 User sent a message:", messageInfo.text?.body);
+    }
+          
 
     res.sendStatus(200);
   } catch (err) {
