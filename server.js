@@ -116,7 +116,7 @@ const saved = await Message.create({
     from: process.env.PHONE_NUMBER_ID, // your business ID
     to,
     message,
-    direction: "out",
+    direction: "outbound",
     status: "sent",
   });
   
@@ -170,7 +170,7 @@ app.post("/api/webhook", async (req, res) => {
         from,
         to: process.env.PHONE_NUMBER_ID,
         message: text,
-        direction: "in",
+        direction: "inbound",
         status: "delivered",
       });
   

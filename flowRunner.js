@@ -76,7 +76,7 @@ async function sendInteractive(to, data) {
     from: "system",
     to,
     message: data.title,
-    direction: "out",
+    direction: "outbound",
     status: "sent",
     media: data.image || null,
   });
