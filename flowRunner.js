@@ -8,7 +8,7 @@ import Message from "./models/Message.js";
 dotenv.config();
 
 // Load your flow (like the JSON you pasted)
-console.log(fs)
+
 const flow = JSON.parse(fs.readFileSync("./sampleFlow.json", "utf-8"));
 
 // WhatsApp send helpers

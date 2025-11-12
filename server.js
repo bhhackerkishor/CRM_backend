@@ -11,18 +11,6 @@ import Message from "./models/Message.js";
 import { runFlow ,continueFlowFromButton} from "./flowRunner.js";
 //import flowData from "./sampleFlow.json" assert { type: "json" }; // export your flow as JSON
 
-
-
-
-
-
-
-
-
-
-
-
-
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
@@ -163,6 +151,12 @@ app.get("/api/webhook", (req, res) => {
 app.post("/api/webhook", async (req, res) => {
   try {
     const data = req.body;
+
+    console.log(data);
+
+    if (!data.entry?.[0]?.changes?.[0]?.value?.messages) {
+      return res.sendStatus(200);
+    }
 
     const messageInfo = data.entry[0].changes[0].value.messages[0];
     const from = messageInfo.from;
