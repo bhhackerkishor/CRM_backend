@@ -44,13 +44,13 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
 };
-app.use(cors(corsOptions));
+app.use(cors());
 app.use(bodyParser.json());
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: corsOptions,
+  
   path: "/socket.io",
 });
 
