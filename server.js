@@ -160,9 +160,10 @@ app.get("/api/webhook", (req, res) => {
 });
 
 // ✅ Webhook Receiver
-app.post("/webhook", async (req, res) => {
+app.post("/api/webhook", async (req, res) => {
   try {
     const data = req.body;
+    console.log("webhook",data)
 
     // guard for non-message events
     if (!data.entry?.[0]?.changes?.[0]?.value) return res.sendStatus(200);
