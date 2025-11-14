@@ -25,6 +25,12 @@ import Tenant from "./models/Tenant.js";
 import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
 
+
+
+// server.js (top, after io creation)
+import { attachIo } from "./middleware/attachIo.js";
+
+
 dotenv.config();
 startScheduler();
 
@@ -33,11 +39,14 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(bodyParser.json());
 
+
 // === HTTP + Socket.io Server ===
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
+
+app.use(attachIo(io));
 
 // === DB ===
 connectDB();
