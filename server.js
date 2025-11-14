@@ -36,7 +36,7 @@ startScheduler();
 
 // === App Setup ===
 const app = express();
-a// CORS
+// CORS
 const corsOptions = {
   origin: ["http://localhost:3000", "https://your-frontend.vercel.app"],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
