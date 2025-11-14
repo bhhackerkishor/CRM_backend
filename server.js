@@ -44,14 +44,23 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200,
 };
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
-  
+  cors: corsOptions,
   path: "/socket.io",
+});
+// === FORCE CORS (RENDER FIX) ===
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  next();
 });
 
 
