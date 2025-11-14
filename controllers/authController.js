@@ -42,6 +42,7 @@ export const signup = async (req, res) => {
 };
 
 export const login = async (req, res) => {
+  console.log(req.body,"SOmeone truing to login")
   const { email, password } = req.body;
 
   if (!email || !password) {

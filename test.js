@@ -1,36 +1,20 @@
-import fetch from "node-fetch";
 
-const PHONE_NUMBER_ID = "850549778144752"; // from your cURL URL
-const TOKEN = "EAAJ3ZALJoxmwBPZBL7qNNeYgmcZCdsaZCZBZBpmt3vBZBpzH8JwNcv2m7tngWzISrFZAG9E1UQhBGwmYXH9zMjkbQK0Rm4uqHx7vu9TQf77OrYBl7WTUNSZCIBT95caBYexUnRKMSaUUxbP6oV8AI97zGDn5QXqaHnigagOnKZCbZArGtwyGmt4dfmLKUfjFHlAHWlpRuefjh49HapyfKRS9VQvBFtlRac4mLmcnhKYha09t07l33Jq6cuUZBZAfV5wRo0cXpnKyFVq6UWCygBk1FlgMAuYqgQwZDZD";
-const TO_NUMBER = "918015603293"; // your verified test number (without '+')
+const bcrypt = require('bcryptjs'); // Or 'bcrypt'
 
-async function sendWhatsAppTemplate() {
-  try {
-    const response = await fetch(
-      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to: TO_NUMBER,
-          type: "text",
-          text: {
-            preview_url: true,
-            body: "here is the app u asked :https://opaira.vercel.app/",
-          },
-        }),
-      }
-    );
+const userInputPassword = 'kishor0909'; 
+const storedHashedPassword = '$2b$12$jA9HiISJSe3DlAKOqT1Hxe7nhp3LSRB2JaxISDmPHdOoOfsKByqX6'; // Example hash
 
-    const data = await response.json();
-    console.log("Response:", data);
-  } catch (err) {
-    console.error("Error:", err);
-  }
-}
-
-sendWhatsAppTemplate();
+bcrypt.compare(userInputPassword, storedHashedPassword, (err, result) => {
+    if (err) {
+        console.error('Error comparing passwords:', err);
+        return;
+    }
+    
+    if (result) {
+        console.log('Passwords match! User authenticated.');
+        // Proceed with login
+    } else {
+        console.log('Passwords do not match! Authentication failed.');
+        // Return authentication failed message
+    }
+});
