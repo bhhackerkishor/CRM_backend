@@ -32,17 +32,13 @@ import { attachIo } from "./middleware/attachIo.js";
 
 
 dotenv.config();
-startScheduler();
+
 
 // === App Setup ===
 const app = express();
 
 
-// HTTP + Socket.IO
-const server = http.createServer(app);
-const io = new Server(server, {
-  path: "/socket.io",
-});
+
 
 
 // ==== FIXED CORS (Render Safe) ====
@@ -50,32 +46,17 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://your-frontend.vercel.app"
 ];
+app.use(bodyParser.json());
+app.use(cors());
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-
-  next();
-});
 
 // Keep cors() but simpler
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
-}));
+// HTTP + Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, {
+  path: "/socket.io",
+});
 
-app.use(bodyParser.json());
 
 
 
@@ -95,6 +76,9 @@ app.use("/api/v1/templates", templateRoutes);
 app.use("/api/v1/broadcasts", broadcastRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/v1/flows", flowRoutes);
+
+
+startScheduler();
 
 // === WhatsApp Webhook Verification ===
 app.get("/api/webhook", (req, res) => {
