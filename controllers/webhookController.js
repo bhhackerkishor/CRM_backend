@@ -1,5 +1,5 @@
 import Flow from "../models/Flow.js";
-import { runFlow } from "../flowRunner.js";
+import { runFlow } from "../utils/flowRunner.js";
 import Tenant from "../models/Tenant.js";
 
 export const webhookReceiver = async (req, res) => {

@@ -7,9 +7,12 @@ import mongoose from "mongoose";
 import http from "http";           // ✅ Needed for socket.io
 import { Server } from "socket.io";
 import Message from "./models/Message.js";
-//import flowRoutes from "./routes/flowRoutes.js";
-import { runFlow ,continueFlowFromButton} from "./flowRunner.js";
+import flowRoutes from "./routes/flowRoutes.js";
+import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
 //import flowData from "./sampleFlow.json" assert { type: "json" }; // export your flow as JSON
+import connectDB from "./config/db.js";
+import authRoutes from "./routes/auth.js";
+import tenantRoutes from "./routes/tenant.js";
 
 dotenv.config();
 const app = express();
@@ -26,13 +29,7 @@ const io = new Server(server, {
 });
 
 // ✅ MongoDB connection
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+connectDB();
 
 // ✅ Test route
 app.get("/", (req, res) => {
@@ -43,7 +40,8 @@ app.post("/api/run-flow", async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: "Missing phone number" });
   try {
-    await runFlow(to);
+    const tenent=1244
+    await runFlowById(to,tenent);
     res.json({ success: true, message: "Flow triggered successfully" });
   } catch (err) {
     console.error(err.message);
@@ -52,7 +50,10 @@ app.post("/api/run-flow", async (req, res) => {
 });
 //  Routes
 
-//app.use("/api/flows", flowRoutes);
+app.use("/api/v1/flows", flowRoutes);
+
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/tenants", tenantRoutes);
 
 
 app.post('/api/broadcast', async (req, res) => {
