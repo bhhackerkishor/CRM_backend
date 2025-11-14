@@ -3,25 +3,30 @@ import Message from "../models/Message.js";
 import Contact from "../models/Contact.js";
 import Tenant from "../models/Tenant.js";
 
+import axios from "axios";
 export const getMessages = async (req, res) => {
-    
-  const messages = await Message.find({ tenantId: req.tenantId })
+    console.log(req.tenantId,"Msg")
+  const messages = await Message.find({ tenantId: req.user.tenantId })
     .populate("contact", "name phone")
     .sort({ timestamp: 1 });
   res.json(messages);
+  
   
 };
 
 export const sendMessage = async (req, res) => {
     const { to, message } = req.body;
     const tenantId = req.user.tenantId; // assuming auth middleware sets req.user
+    
   
     try {
       const tenant = await Tenant.findById(tenantId);
+      //console.log(tenant,req.user)
       if (!tenant) return res.status(404).json({ error: "Tenant not found" });
-  
+      
       // Find or create contact
       let contact = await Contact.findOne({ phone: to, tenantId });
+
       if (!contact) {
         contact = await Contact.create({
           tenantId,
@@ -30,9 +35,10 @@ export const sendMessage = async (req, res) => {
           source: "manual",
         });
       }
+     
   
       // Send to WhatsApp
-      const waRes = await require("axios").default.post(
+      const waRes = await axios.post(
         `https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`,
         {
           messaging_product: "whatsapp",
@@ -42,6 +48,7 @@ export const sendMessage = async (req, res) => {
         },
         { headers: { Authorization: `Bearer ${tenant.accessToken}` } }
       );
+      //console.log(waRes)
   
       // Save message
       const savedMsg = await Message.create({
@@ -61,7 +68,7 @@ export const sendMessage = async (req, res) => {
   
       // Emit to tenant room
       req.io.to(`tenant_${tenantId}`).emit("newMessage", savedMsg);
-      console.log(req.io)
+      //console.log(req.io,"test")
   
       res.json(savedMsg);
     } catch (err) {

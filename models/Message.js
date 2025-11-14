@@ -15,6 +15,6 @@ const messageSchema = new mongoose.Schema({
 });
 
 // ← Add this line to disable strict populate
-messageSchema.set("strictPopulate", false);
+//messageSchema.set("strictPopulate", false);
 
 export default mongoose.model("Message", messageSchema);
