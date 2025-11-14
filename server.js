@@ -41,23 +41,36 @@ const app = express();
 
 
 
-// ==== FIXED CORS (Render Safe) ====
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://your-frontend.vercel.app"
+  "https://your-frontend.vercel.app",
+  "https://crm-backend.onrender.com",
+  "http://crm-backend.onrender.com"
 ];
-app.use(bodyParser.json());
-app.use(cors());
 
+// UNIVERSAL CORS (Render Safe)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
 
-// Keep cors() but simpler
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 // HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
   path: "/socket.io",
 });
-
-
 
 
 // === DB ===
