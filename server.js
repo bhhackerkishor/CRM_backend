@@ -11,6 +11,7 @@ import Message from "./models/Message.js";
 import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
 import Contact from "./models/Contact.js";
+import Tenant from "./models/Tenant.js";
 //routes
 import flowRoutes from "./routes/flowRoutes.js";
 import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
