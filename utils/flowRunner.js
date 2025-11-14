@@ -9,7 +9,7 @@ import axios from "axios";
 import mongoose from "mongoose";
 
 async function sendText(tenant, to, text) {
-  console.log(tenant, to, text)
+  //console.log(tenant, to, text)
   const res =await axios.post(`https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`, {
     messaging_product: "whatsapp", to, type: "text", text: { body: text }
   }, { headers: { Authorization:`Bearer ${tenant.accessToken}` } });

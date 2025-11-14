@@ -209,10 +209,12 @@ app.post("/webhook", async (req, res) => {
       // If it's a button reply
       if (messageInfo.interactive?.button_reply?.id) {
         const replyId = messageInfo.interactive.button_reply.id;
+        console.log("if",messageInfo.interactive)
         await continueFlowFromButton(from, replyId); // your function finds run and continues
       } else {
         // If the waitingRun is expecting text input, you can store into context and continue
         // e.g. waitingRun.context.latestReply = text
+        console.log("else",waitingRun)
         waitingRun.context = waitingRun.context || {};
         waitingRun.context.latestReply = text;
         waitingRun.status = "running";
