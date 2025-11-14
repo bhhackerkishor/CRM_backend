@@ -36,26 +36,30 @@ startScheduler();
 
 // === App Setup ===
 const app = express();
-app.use(cors({ origin: "*" }));
+a// CORS
+const corsOptions = {
+  origin: ["http://localhost:3000", "https://your-frontend.vercel.app"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
-
-// === HTTP + Socket.io Server ===
+// HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: corsOptions,
+  path: "/socket.io",
 });
 
-app.use(attachIo(io));
 
 // === DB ===
 connectDB();
 
 // === Middleware: Attach io + tenant + user to req ===
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
+app.use(attachIo(io));
 
 // === Routes ===
 app.get("/", (req, res) => res.send("ChatCom Backend Running"));
