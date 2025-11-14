@@ -215,6 +215,7 @@ async function executeNode(flow, run, tenant, to, node) {
       run.status = "waiting";
       run.context.waitingNodeId = node.id;
       run.context.waitingFor = "button_reply";
+      run.markModified('context'); //to change the context in a indirect
       await run.save();
       return { stop: true };
 

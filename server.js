@@ -6,14 +6,24 @@ import cors from "cors";
 import mongoose from "mongoose";
 import http from "http";           // ✅ Needed for socket.io
 import { Server } from "socket.io";
+//models
 import Message from "./models/Message.js";
+import Flow from "../models/Flow.js";
+import FlowRun from "../models/FlowRun.js";
+import Contact from "../models/Contact.js";
+//routes
 import flowRoutes from "./routes/flowRoutes.js";
 import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
 //import flowData from "./sampleFlow.json" assert { type: "json" }; // export your flow as JSON
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import tenantRoutes from "./routes/tenant.js";
+import { startScheduler } from "./services/scheduler.js";
 
+
+
+//node-crn to check the sheduled flows or msg
+startScheduler();
 dotenv.config();
 const app = express();
 app.use(bodyParser.json());
@@ -149,50 +159,106 @@ app.get("/api/webhook", (req, res) => {
 });
 
 // ✅ Webhook Receiver
-app.post("/api/webhook", async (req, res) => {
+router.post("/webhook", async (req, res) => {
   try {
     const data = req.body;
 
-    console.log(data);
+    // guard for non-message events
+    if (!data.entry?.[0]?.changes?.[0]?.value) return res.sendStatus(200);
 
-    if (!data.entry?.[0]?.changes?.[0]?.value?.messages) {
+    const value = data.entry[0].changes[0].value;
+    const messages = value.messages;
+    const contacts = value.contacts;
+
+    // If no messages present, exit
+    if (!messages || messages.length === 0) {
       return res.sendStatus(200);
     }
 
-    const messageInfo = data.entry[0].changes[0].value.messages[0];
-    const from = messageInfo.from;
+    const messageInfo = messages[0];
+    const from = messageInfo.from; // phone number
+    const tenantWaId = value.metadata?.phone_number_id; // phone number id
+    // find Tenant by phoneNumberId
+    const tenant = await Tenant.findOne({ phoneNumberId: tenantWaId });
+    const tenantId = tenant?._id;
 
-    if (data.object && data.entry?.[0]?.changes?.[0]?.value?.messages) {
-     
-     
-      const text = messageInfo.text?.body || "non-text message";
+    // ensure contact record exists (upsert)
+    const profileName = messageInfo?.profile?.name || contacts?.[0]?.profile?.name || "";
+    await Contact.findOneAndUpdate(
+      { phone: from, tenantId },
+      { phone: from, name: profileName, lastIncomingAt: new Date(), source: "whatsapp" },
+      { upsert: true }
+    );
 
-      const newMsg = await Message.create({
-        from,
-        to: process.env.PHONE_NUMBER_ID,
-        message: text,
-        direction: "inbound",
-        status: "delivered",
-      });
-  
-      // ✅ Emit real-time update to clients
-      io.emit("newMessage", newMsg);
+    // Save inbound message into Message collection (be consistent with schema)
+    const text = messageInfo.text?.body || messageInfo?.interactive?.button_reply?.title || "non-text message";
+    const newMsg = await Message.create({
+      tenantId,
+      from,
+      to: tenantWaId,
+      message: text,
+      direction: "inbound",
+      status: "delivered",
+      timestamp: new Date()
+    });
+    io.emit("newMessage", newMsg);
+
+    // 1) If FlowRun waiting for this user, resume it
+    const waitingRun = await FlowRun.findOne({ userPhone: from, tenantId, status: "waiting" }).sort({ updatedAt: -1 });
+    if (waitingRun) {
+      // If it's a button reply
+      if (messageInfo.interactive?.button_reply?.id) {
+        const replyId = messageInfo.interactive.button_reply.id;
+        await continueFlowFromButton(from, replyId); // your function finds run and continues
+      } else {
+        // If the waitingRun is expecting text input, you can store into context and continue
+        // e.g. waitingRun.context.latestReply = text
+        waitingRun.context = waitingRun.context || {};
+        waitingRun.context.latestReply = text;
+        waitingRun.status = "running";
+        await waitingRun.save();
+
+        // Decide how to continue: you might implement continueFlowFromText(run, text)
+        // For simplicity, call a helper which uses run.context to branch; implement as needed.
+        //await continueFlowFromText(waitingRun, text);
+      }
+      return res.sendStatus(200);
     }
-    if (messageInfo.interactive?.button_reply) {
-      const replyId = messageInfo.interactive.button_reply.id; // like "btn-0"
-      console.log(`🟢 Button pressed: ${replyId} by ${from}`);
-      await continueFlowFromButton(from, replyId);
-    } else {
-      console.log("💬 User sent a message:", messageInfo.text?.body);
-    }
-          
 
-    res.sendStatus(200);
+    // 2) If not waiting, check for keyword-triggered flows for this tenant
+    const incomingLower = (text || "").trim().toLowerCase();
+
+    // find any active flow for this tenant whose triggers.keywords contains this token
+    if (incomingLower) {
+      const flows = await Flow.find({ tenantId, isActive: true, "triggers.keywords": { $exists: true, $ne: [] } });
+      for (const flow of flows) {
+        for (const kw of flow.triggers.keywords || []) {
+          if (incomingLower === (kw || "").toLowerCase()) {
+            // run the flow for this user
+            await runFlowById(flow._id, from);
+            return res.sendStatus(200);
+          }
+        }
+      }
+    }
+
+    // 3) If tenant has default flow (isDefaultForTenant), run it
+    if (tenant?.defaultFlowId) {
+      const df = await Flow.findOne({ _id: tenant.defaultFlowId, isActive: true });
+      if (df) {
+        await runFlowById(df._id, from);
+        return res.sendStatus(200);
+      }
+    }
+
+    // If nothing matched, simple fallback: do nothing or auto-assign a contact to agents
+    return res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Webhook error:", err.message);
-    res.sendStatus(500);
+    console.error("webhook error:", err);
+    return res.sendStatus(500);
   }
 });
+
 
 // ✅ Get all messages
 app.get("/api/messages", async (req, res) => {
