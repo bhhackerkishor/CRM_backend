@@ -5,7 +5,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "chatcom-secret-2025";
 
 export const protect = async (req, res, next) => {
   let token;
-
+  
   if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
   }

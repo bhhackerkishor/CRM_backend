@@ -56,7 +56,7 @@ export async function startFlow(flowId, userPhone) {
   });
 
   const startNode =
-    flow.nodes.find(n => n.type === "input") ||
+    flow.nodes.find(n => n.type === "start") ||
     flow.nodes.find(n => !flow.edges.some(e => e.target === n.id));
 
   return runFlowStep(flow, run, tenant, userPhone, startNode);
@@ -82,7 +82,7 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
       // 1️⃣ Send plain text
       case "message":
         console.log(type)
-        await sendText(tenant, userPhone, resolveVars(data.label, run.context));
+        await sendText(tenant, userPhone, resolveVariables(data.label, run.context));
         break;
 
       // 2️⃣ Media + Buttons → WAIT mode
@@ -90,7 +90,7 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
         console.log(type)
         const finalData = {
           ...data,
-          title: resolveVars(data.title, run.context)
+          title: resolveVariables(data.title, run.context)
         };
 
         await sendInteractive(tenant, userPhone, finalData);
