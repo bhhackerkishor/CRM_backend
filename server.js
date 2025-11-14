@@ -8,9 +8,9 @@ import http from "http";           // ✅ Needed for socket.io
 import { Server } from "socket.io";
 //models
 import Message from "./models/Message.js";
-import Flow from "../models/Flow.js";
-import FlowRun from "../models/FlowRun.js";
-import Contact from "../models/Contact.js";
+import Flow from "./models/Flow.js";
+import FlowRun from "./models/FlowRun.js";
+import Contact from "./models/Contact.js";
 //routes
 import flowRoutes from "./routes/flowRoutes.js";
 import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
@@ -159,7 +159,7 @@ app.get("/api/webhook", (req, res) => {
 });
 
 // ✅ Webhook Receiver
-router.post("/webhook", async (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
     const data = req.body;
 
