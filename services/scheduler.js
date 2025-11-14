@@ -2,7 +2,7 @@ import cron from "node-cron";
 import Flow from "../models/Flow.js";
 import FlowRun from "../models/FlowRun.js";
 import Tenant from "../models/Tenant.js";
-import { runFlowById } from "../utils/flowRunner.js";
+import { startFlow } from "../utils/flowRunner.js";
 import moment from "moment-timezone";
 
 const runningJobs = new Map();
@@ -71,9 +71,9 @@ async function triggerFlowForFlow(flow) {
   const contacts = await require("../models/Contact").default.find({ tenantId }).limit(200); // limit to avoid floods
   for (const c of contacts) {
     try {
-      await runFlowById(flow._id, c.phone);
+      await startFlow(flow._id, c.phone);
     } catch (err) {
-      console.error("Failed runFlowById for scheduled flow:", err.message);
+      console.error("Failed startFlow for scheduled flow:", err.message);
     }
   }
 }

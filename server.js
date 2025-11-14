@@ -18,7 +18,7 @@ import Tenant from "./models/Tenant.js";
 
 //routes
 import flowRoutes from "./routes/flowRoutes.js";
-import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
+import { startFlow,continueFlowByUserReply} from "./utils/flowRunner.js";
 //import flowData from "./sampleFlow.json" assert { type: "json" }; // export your flow as JSON
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
@@ -175,105 +175,119 @@ app.get("/api/webhook", (req, res) => {
 app.post("/api/webhook", async (req, res) => {
   try {
     const data = req.body;
-    console.log("webhook",data)
+    console.log("WEBHOOK GOT:", JSON.stringify(data, null, 2));
 
-    // guard for non-message events
+    // Ensure valid WA event
     if (!data.entry?.[0]?.changes?.[0]?.value) return res.sendStatus(200);
 
     const value = data.entry[0].changes[0].value;
     const messages = value.messages;
     const contacts = value.contacts;
+    if (!messages || messages.length === 0) return res.sendStatus(200);
 
-    // If no messages present, exit
-    if (!messages || messages.length === 0) {
-      return res.sendStatus(200);
-    }
+    const msg = messages[0];
 
-    const messageInfo = messages[0];
-    const from = messageInfo.from; // phone number
-    const tenantWaId = value.metadata?.phone_number_id; // phone number id
-    // find Tenant by phoneNumberId
-    const tenant = await Tenant.findOne({ phoneNumberId: tenantWaId });
-    const tenantId = tenant?._id;
+    const userPhone = msg.from;
+    const tenantPhoneNumberId = value.metadata?.phone_number_id;
 
-    // ensure contact record exists (upsert)
-    const profileName = messageInfo?.profile?.name || contacts?.[0]?.profile?.name || "";
+    const tenant = await Tenant.findOne({ phoneNumberId: tenantPhoneNumberId });
+    if (!tenant) return res.sendStatus(200);
+
+    const tenantId = tenant._id;
+    const profileName =
+      msg?.profile?.name || contacts?.[0]?.profile?.name || "";
+
+    // Upsert contact
     await Contact.findOneAndUpdate(
-      { phone: from, tenantId },
-      { phone: from, name: profileName, lastIncomingAt: new Date(), source: "whatsapp" },
+      { phone: userPhone, tenantId },
+      { name: profileName, lastIncomingAt: new Date(), source: "whatsapp" },
       { upsert: true }
     );
 
-    // Save inbound message into Message collection (be consistent with schema)
-    const text = messageInfo.text?.body || messageInfo?.interactive?.button_reply?.title || "non-text message";
-    const newMsg = await Message.create({
+    // Extract message text
+    const text =
+      msg.text?.body ||
+      msg.interactive?.button_reply?.title ||
+      "non-text message";
+
+    await Message.create({
       tenantId,
-      from,
-      to: tenantWaId,
+      from: userPhone,
+      to: tenantPhoneNumberId,
       message: text,
       direction: "inbound",
       status: "delivered",
-      timestamp: new Date()
+      timestamp: new Date(),
     });
-    io.emit("newMessage", newMsg);
 
-    // 1) If FlowRun waiting for this user, resume it
-    const waitingRun = await FlowRun.findOne({ userPhone: from, tenantId, status: "waiting" }).sort({ updatedAt: -1 });
+    // -------------------------------------------------------
+    // 🔥 1. IF FLOW IS WAITING → CONTINUE IT
+    // -------------------------------------------------------
+
+    const waitingRun = await FlowRun.findOne({
+      userPhone,
+      tenantId,
+      status: "waiting",
+    }).sort({ updatedAt: -1 });
+
     if (waitingRun) {
-      // If it's a button reply
-      if (messageInfo.interactive?.button_reply?.id) {
-        const replyId = messageInfo.interactive.button_reply.id;
-        console.log("if",messageInfo.interactive)
-        await continueFlowFromButton(from, replyId); // your function finds run and continues
-      } else {
-        // If the waitingRun is expecting text input, you can store into context and continue
-        // e.g. waitingRun.context.latestReply = text
-        console.log("else",waitingRun)
-        waitingRun.context = waitingRun.context || {};
-        waitingRun.context.latestReply = text;
-        waitingRun.status = "running";
-        await waitingRun.save();
+      console.log("📌 Continuing waiting flow...");
 
-        // Decide how to continue: you might implement continueFlowFromText(run, text)
-        // For simplicity, call a helper which uses run.context to branch; implement as needed.
-        //await continueFlowFromText(waitingRun, text);
+      // BUTTON REPLY
+      if (msg.interactive?.button_reply?.id) {
+        const replyId = msg.interactive.button_reply.id;
+        await continueFlowByUserReply(userPhone, replyId);
+      } else {
+        // TEXT INPUT
+        await continueFlowByUserReply(userPhone, text);
       }
+
       return res.sendStatus(200);
     }
 
-    // 2) If not waiting, check for keyword-triggered flows for this tenant
+    // -------------------------------------------------------
+    // 🔥 2. KEYWORD TRIGGERED FLOWS
+    // -------------------------------------------------------
+
     const incomingLower = (text || "").trim().toLowerCase();
 
-    // find any active flow for this tenant whose triggers.keywords contains this token
-    if (incomingLower) {
-      const flows = await Flow.find({ tenantId, isActive: true, "triggers.keywords": { $exists: true, $ne: [] } });
-      for (const flow of flows) {
-        for (const kw of flow.triggers.keywords || []) {
-          if (incomingLower === (kw || "").toLowerCase()) {
-            // run the flow for this user
-            await runFlowById(flow._id, from);
-            return res.sendStatus(200);
-          }
+    const flows = await Flow.find({
+      tenantId,
+      isActive: true,
+      "triggers.keywords": { $exists: true, $ne: [] },
+    });
+
+    for (const flow of flows) {
+      for (const kw of flow.triggers.keywords) {
+        if (incomingLower === kw.toLowerCase()) {
+          console.log("🟢 Running triggered flow:", flow.name);
+          await startFlow(flow._id, userPhone);
+          return res.sendStatus(200);
         }
       }
     }
 
-    // 3) If tenant has default flow (isDefaultForTenant), run it
-    if (tenant?.defaultFlowId) {
-      const df = await Flow.findOne({ _id: tenant.defaultFlowId, isActive: true });
-      if (df) {
-        await runFlowById(df._id, from);
-        return res.sendStatus(200);
-      }
+    // -------------------------------------------------------
+    // 🔥 3. DEFAULT FLOW
+    // -------------------------------------------------------
+
+    if (tenant.defaultFlowId) {
+      console.log("🟡 Running default flow");
+      await startFlow(tenant.defaultFlowId, userPhone);
+      return res.sendStatus(200);
     }
 
-    // If nothing matched, simple fallback: do nothing or auto-assign a contact to agents
+    // -------------------------------------------------------
+    // 4. Nothing matched
+    // -------------------------------------------------------
+    console.log("⚪ No flow triggered.");
     return res.sendStatus(200);
   } catch (err) {
-    console.error("webhook error:", err);
+    console.error("Webhook Error:", err);
     return res.sendStatus(500);
   }
 });
+
 
 
 // ✅ Get all messages
