@@ -64,7 +64,7 @@ router.put("/:id", async (req, res) => {
 router.post("/:id/run", async (req, res) => {
   try {
     const { phone, tenantId } = req.body;
-    //console.log(req.body)
+    console.log(req.body)
     if (!phone) return res.status(400).json({ error: "Missing phone number" });
 
     const flow = await Flow.findOne({ _id: req.params.id, tenantId });

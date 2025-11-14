@@ -12,6 +12,10 @@ import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
 import Contact from "./models/Contact.js";
 import Tenant from "./models/Tenant.js";
+
+
+
+
 //routes
 import flowRoutes from "./routes/flowRoutes.js";
 import { runFlowById,continueFlowFromButton} from "./utils/flowRunner.js";
@@ -20,6 +24,11 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import tenantRoutes from "./routes/tenant.js";
 import { startScheduler } from "./services/scheduler.js";
+import contactRoutes from "./routes/contact.js";
+import broadcastRoutes from "./routes/broadcast.js";
+import templateRoutes from "./routes/template.js";
+
+
 
 
 
@@ -62,9 +71,12 @@ app.post("/api/run-flow", async (req, res) => {
 //  Routes
 
 app.use("/api/v1/flows", flowRoutes);
-
+app.use("/api/v1/contacts", contactRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/tenants", tenantRoutes);
+app.use("/api/v1/templates", templateRoutes);
+app.use("/api/v1/broadcasts", broadcastRoutes);
+
 
 
 app.post('/api/broadcast', async (req, res) => {

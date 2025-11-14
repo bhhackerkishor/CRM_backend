@@ -251,11 +251,12 @@ async function executeNode(flow, run, tenant, to, node) {
         ...node.data,
         title: resolveVariables(node.data.title, run.context),
       };
-      await sendInteractive(tenant, to, newData);
+      const res =await sendInteractive(tenant, to, newData);
       run.status = "waiting";
       run.context.waitingNodeId = node.id;
       run.context.waitingFor = "button_reply";
       run.markModified('context'); //to change the context in a indirect
+      console.log(res)
       await run.save();
       return { stop: true };
 
