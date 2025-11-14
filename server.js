@@ -36,32 +36,47 @@ startScheduler();
 
 // === App Setup ===
 const app = express();
-// CORS
-const corsOptions = {
-  origin: ["http://localhost:3000", "https://your-frontend.vercel.app"],
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-app.use(cors(corsOptions));
-app.use(bodyParser.json());
+
 
 // HTTP + Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: corsOptions,
   path: "/socket.io",
 });
-// === FORCE CORS (RENDER FIX) ===
+
+
+// ==== FIXED CORS (Render Safe) ====
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://your-frontend.vercel.app"
+];
+
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "http://localhost:3000");
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
   next();
 });
+
+// Keep cors() but simpler
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
+app.use(bodyParser.json());
+
 
 
 // === DB ===
