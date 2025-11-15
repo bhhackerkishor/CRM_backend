@@ -1,20 +1,36 @@
+import fetch from "node-fetch";
 
-const bcrypt = require('bcryptjs'); // Or 'bcrypt'
+const PHONE_NUMBER_ID = "850549778144752"; // from your cURL URL
+const TOKEN = "EAAJ3ZALJoxmwBPz2Nhic7qDZC6C7M3rGR7EasZAdE3iB0m4TnVpKfonhsIIB8ZCayijIlTjtINNFBf51cpEKPxlaIJ9ZBIPTU03po3Xbbj0psWRLeEmzNGHLvceLy7KGudanxpXWRsS2MLrpUD8JZArnCPHWtdaNI15flTXTSYaOrJuQAZAKQppLCMVHbaKjgZBZClXSAqly4wFA2FNYycNOp7jSaYNaHpveaJ5rMKqri";
+const TO_NUMBER = "918015603293"; // your verified test number (without '+')
 
-const userInputPassword = 'kishor0909'; 
-const storedHashedPassword = '$2b$12$jA9HiISJSe3DlAKOqT1Hxe7nhp3LSRB2JaxISDmPHdOoOfsKByqX6'; // Example hash
+async function sendWhatsAppTemplate() {
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: TO_NUMBER,
+          type: "text",
+          text: {
+            preview_url: true,
+            body: "here is the app u asked :https://opaira.vercel.app/",
+          },
+        }),
+      }
+    );
 
-bcrypt.compare(userInputPassword, storedHashedPassword, (err, result) => {
-    if (err) {
-        console.error('Error comparing passwords:', err);
-        return;
-    }
-    
-    if (result) {
-        console.log('Passwords match! User authenticated.');
-        // Proceed with login
-    } else {
-        console.log('Passwords do not match! Authentication failed.');
-        // Return authentication failed message
-    }
-});
+    const data = await response.json();
+    console.log("Response:", data);
+  } catch (err) {
+    console.error("Error:", err);
+  }
+}
+
+sendWhatsAppTemplate();

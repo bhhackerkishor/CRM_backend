@@ -9,12 +9,12 @@ import axios from "axios";
 import mongoose from "mongoose";
 
 async function sendText(tenant, to, text) {
-  //console.log(tenant, to, text)
+  console.log(tenant, to, text)
   const res =await axios.post(`https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`, {
     messaging_product: "whatsapp", to, type: "text", text: { body: text }
   }, { headers: { Authorization:`Bearer ${tenant.accessToken}` } });
 
-  console.log(res.data)
+  console.log(res)
 
   await Message.create({ tenantId: tenant._id, from: tenant.phoneNumberId, to, message: text, direction: "outbound", status: "sent" });
 }
@@ -33,7 +33,7 @@ async function sendInteractive(tenant, to, data) {
       action: { buttons: data.buttons.map((b,i)=>({ type:"reply", reply:{ id:`btn-${i}`, title:b } })) }
     }
   };
-  console.log(tenant, to, data)
+  //console.log(tenant, to, data)
   const response= await axios.post(`https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`, payload, { headers:{ Authorization:`Bearer ${tenant.accessToken}` }});
   console.log(response.data)
   await Message.create({ tenantId: tenant._id, from: tenant.phoneNumberId, to, message: data.title, direction: "outbound", status: "sent", media: data.image || null });
@@ -56,7 +56,7 @@ export async function startFlow(flowId, userPhone) {
   });
 
   const startNode =
-    flow.nodes.find(n => n.type === "start") ||
+    flow.nodes.find(n => n.type === "input") ||
     flow.nodes.find(n => !flow.edges.some(e => e.target === n.id));
 
   return runFlowStep(flow, run, tenant, userPhone, startNode);
@@ -68,7 +68,7 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
   let current = startNode;
   
   while (current) {
-    console.log(current)
+    console.log(current.type)
     run.currentNodeId = current.id;
     run.updatedAt = Date.now();
     await run.save();
@@ -142,7 +142,7 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
         break;
 
       // 7️⃣ Input node (expect user text)
-      case "input":
+      case "input_node":
         run.status = "waiting";
         run.context.waitingNodeId = current.id;
         run.context.waitingFor = "text_reply";

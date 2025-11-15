@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-
+import Tenant from "../models/Tenant.js";
 const JWT_SECRET = process.env.JWT_SECRET || "chatcom-secret-2025";
 
 export const protect = async (req, res, next) => {
@@ -21,7 +21,7 @@ export const protect = async (req, res, next) => {
     if (!user) return res.status(401).json({ message: "User not found" });
 
     req.user = user;
-    req.tenantId = user.tenant; // convenience
+    req.tenantId = user.tenantId; // convenience
     next();
   } catch (err) {
     res.status(401).json({ message: "Token invalid or expired" });
