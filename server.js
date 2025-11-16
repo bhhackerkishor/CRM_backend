@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
-
+import axios from "axios"
 
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
