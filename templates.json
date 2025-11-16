@@ -1,0 +1,312 @@
+[
+  {
+    "name": "otp_verification",
+    "category": "AUTHENTICATION",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Your verification code is {{1}}. It will expire in {{2}} minutes." }
+    ],
+    "status": "APPROVED",
+    "description": "OTP code for verification"
+  },
+  {
+    "name": "order_confirmed",
+    "category": "UTILITY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your order {{2}} has been confirmed. Estimated delivery: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Order confirmation"
+  },
+  {
+    "name": "order_shipped",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Good news {{1}}! Your order {{2}} has been shipped via {{3}}. Tracking: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Shipment notification"
+  },
+  {
+    "name": "order_delivered",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your order {{2}} was delivered on {{3}}. Please rate your experience." }
+    ],
+    "status": "APPROVED",
+    "description": "Delivery confirmation"
+  },
+  {
+    "name": "pending_payment",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, payment of {{2}} for invoice {{3}} is pending. Pay by {{4}} to avoid cancellation." }
+    ],
+    "status": "APPROVED",
+    "description": "Payment reminder"
+  },
+  {
+    "name": "appointment_reminder",
+    "category": "APPOINTMENT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Reminder: Your appointment at {{1}} on {{2}} at {{3}}. Reply CONFIRM to confirm." }
+    ],
+    "status": "APPROVED",
+    "description": "Appointment reminder"
+  },
+  {
+    "name": "subscription_renewal",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your subscription for {{2}} renews on {{3}}. Amount: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Subscription renewal alert"
+  },
+  {
+    "name": "welcome_new_user",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Welcome {{1}}! Thanks for joining {{2}}. Use code {{3}} for 10% off on your first order." }
+    ],
+    "status": "APPROVED",
+    "description": "Welcome and promo"
+  },
+  {
+    "name": "password_reset",
+    "category": "AUTHENTICATION",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Reset link: {{1}} — This link expires in {{2}} minutes." }
+    ],
+    "status": "APPROVED",
+    "description": "Password reset link"
+  },
+  {
+    "name": "promo_flash_sale",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Flash Sale! {{1}}% off on {{2}} today only. Use {{3}} at checkout." }
+    ],
+    "status": "APPROVED",
+    "description": "Marketing flash sale"
+  },
+  {
+    "name": "cart_abandonment",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "You left items in your cart, {{1}}. Complete purchase now and get {{2}}% off." }
+    ],
+    "status": "APPROVED",
+    "description": "Cart reminder"
+  },
+  {
+    "name": "support_ticket_created",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Thanks {{1}} — We created ticket {{2}} for your issue. Our team will reply within {{3}} hours." }
+    ],
+    "status": "APPROVED",
+    "description": "Support ticket acknowledgement"
+  },
+  {
+    "name": "support_ticket_resolved",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hello {{1}}, your support ticket {{2}} has been resolved. If issue persists, reply OPEN." }
+    ],
+    "status": "APPROVED",
+    "description": "Support resolution"
+  },
+  {
+    "name": "invoice_ready",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Invoice {{1}} for amount {{2}} is ready. Download: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Invoice notification"
+  },
+  {
+    "name": "refund_initiated",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, refund of {{2}} for order {{3}} has been initiated. Refund ID: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Refund notification"
+  },
+  {
+    "name": "delivery_delay",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "We're sorry {{1}} — delivery for order {{2}} is delayed to {{3}} due to {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Delay alert"
+  },
+  {
+    "name": "reorder_suggestion",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, it's time to reorder {{2}}. Click here: {{3}} for a fast reorder." }
+    ],
+    "status": "APPROVED",
+    "description": "Reorder prompt"
+  },
+  {
+    "name": "trial_expiry",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Your free trial for {{1}} expires on {{2}}. Upgrade now to avoid interruption." }
+    ],
+    "status": "APPROVED",
+    "description": "Trial expiry notice"
+  },
+  {
+    "name": "delivery_attempt_failed",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Delivery attempt for {{1}} failed. Please contact {{2}} or reschedule at {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Failed delivery"
+  },
+  {
+    "name": "price_drop_alert",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Price drop alert: {{1}} is now {{2}} — grab it before stock ends." }
+    ],
+    "status": "APPROVED",
+    "description": "Price drop notification"
+  },
+  {
+    "name": "feedback_request",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, how was your experience with order {{2}}? Reply 1-5 to rate." }
+    ],
+    "status": "APPROVED",
+    "description": "Feedback solicitation"
+  },
+  {
+    "name": "security_alert",
+    "category": "SECURITY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "We detected a login from a new device for {{1}} at {{2}}. If this wasn't you, reply SECURITY." }
+    ],
+    "status": "APPROVED",
+    "description": "Security alert"
+  },
+  {
+    "name": "appointment_followup",
+    "category": "APPOINTMENT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Thanks {{1}} for visiting. Book follow-up at {{2}} if needed: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Post-appointment follow-up"
+  },
+  {
+    "name": "membership_card",
+    "category": "LOYALTY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your membership number is {{2}}. Benefits: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Membership details"
+  },
+  {
+    "name": "promo_coupon",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Exclusive: Use coupon {{1}} for {{2}} off — valid till {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Coupon delivery"
+  },
+  {
+    "name": "welcome_onboarding",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}! Here's a quick start guide for {{2}}: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Onboarding guide"
+  },
+  {
+    "name": "beta_invite",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, you're invited to beta access for {{2}}. Join here: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Beta invite"
+  },
+  {
+    "name": "payment_success",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Payment of {{1}} received for order {{2}}. Txn ID: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Payment confirmation"
+  },
+  {
+    "name": "address_change_confirmation",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Address updated for {{1}} to {{2}}. If incorrect, contact support." }
+    ],
+    "status": "APPROVED",
+    "description": "Address change"
+  },
+  {
+    "name": "low_stock_alert",
+    "category": "INTERNAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Alert: Stock for {{1}} dropped below {{2}} units." }
+    ],
+    "status": "APPROVED",
+    "description": "Internal stock alert"
+  },
+  {
+    "name": "welcome_trial_user",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Welcome {{1}} to the {{2}} trial. Explore features here: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Trial welcome"
+  }
+]

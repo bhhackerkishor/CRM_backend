@@ -15,6 +15,8 @@ import templateRoutes from "./routes/template.js";
 import broadcastRoutes from "./routes/broadcast.js";
 import messageRoutes from "./routes/message.js";
 import flowRoutes from "./routes/flowRoutes.js";
+import commerceRoutes from "./routes/commerceRoutes.js";
+
 
 import { startScheduler } from "./services/scheduler.js";
 import { startFlow, continueFlowByUserReply } from "./utils/flowRunner.js";
@@ -24,7 +26,7 @@ import Contact from "./models/Contact.js";
 import Tenant from "./models/Tenant.js";
 import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
-
+import Product from "./models/Product.js"
 
 
 // server.js (top, after io creation)
@@ -32,6 +34,22 @@ import { attachIo } from "./middleware/attachIo.js";
 
 
 dotenv.config();
+
+async function sendMessage(to, from, body) {
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${from}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body },
+    },
+    {
+      headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
+    }
+  );
+}
+
 
 
 // === App Setup ===
@@ -81,6 +99,7 @@ app.use("/api/v1/templates", templateRoutes);
 app.use("/api/v1/broadcasts", broadcastRoutes);
 app.use("/api/v1/messages", messageRoutes);
 app.use("/api/v1/flows", flowRoutes);
+app.use("/api/v1/commerce", commerceRoutes);
 
 
 startScheduler();
@@ -99,6 +118,7 @@ app.get("/api/webhook", (req, res) => {
 app.post("/api/webhook", async (req, res) => {
   try {
     const value = req.body.entry?.[0]?.changes?.[0]?.value;
+    console.log(value,req.body)
     if (!value?.messages?.[0]) return res.sendStatus(200);
 
     const msg = value.messages[0];
@@ -123,6 +143,96 @@ app.post("/api/webhook", async (req, res) => {
       msg.text?.body ||
       msg.interactive?.button_reply?.title ||
       "[Media/Unsupported]";
+
+      // SAMPLE: If user types 'hi' → send product list
+if (text.trim().toLowerCase() === "hi") {
+  const products = await Product.find({});
+
+  const itemsText = products
+    .map(
+      (p, i) =>
+        `${i + 1}. ${p.name} - ₹${p.price}\nReply: BUY ${i + 1}`
+    )
+    .join("\n\n");
+
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${tenantPhoneId}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: userPhone,
+      type: "text",
+      text: {
+        body:
+          "🛒 *Our Products*\n\n" + itemsText + "\n\nExample: BUY 1",
+      },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+      },
+    }
+  );
+
+  return res.sendStatus(200);
+}
+
+// SAMPLE: Detect BUY Command
+if (text.toLowerCase().startsWith("buy")) {
+  const productIndex = parseInt(text.split(" ")[1]) - 1;
+
+  const products = await Product.find({});
+  const product = products[productIndex];
+
+  if (!product) {
+    await sendMessage(userPhone, tenantPhoneId, "Invalid product number.");
+    return res.sendStatus(200);
+  }
+
+  // Create a sample order via commerce route
+  const orderResp = await axios.post(
+    "https://crm-backend-c54a.onrender.com/api/v1/commerce/order",
+    {
+      phone: userPhone,
+      tenantId: tenant._id,
+      items: [
+        {
+          name: product.name,
+          price: product.price,
+          qty: 1,
+        },
+      ],
+    }
+  );
+
+  return res.sendStatus(200);
+}
+
+
+
+      // Detect Payment Confirmation
+if (text.trim().toLowerCase() === "done") {
+  const pendingOrder = await Order.findOne({ phone: userPhone, status: "pending" })
+    .sort({ createdAt: -1 });
+
+  if (pendingOrder) {
+    pendingOrder.status = "paid";
+    await pendingOrder.save();
+
+    await axios.post(
+      `https://graph.facebook.com/v20.0/${tenantPhoneId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: userPhone,
+        type: "text",
+        text: { body: "✅ Payment Received! Your order is confirmed." },
+      },
+      {
+        headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
+      }
+    );
+  }
+}
+
 
     // === Save Message with Contact ID ===
     const message = await Message.create({

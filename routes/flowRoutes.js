@@ -10,11 +10,14 @@ router.get("/", async (req, res) => {
   try {
     const { tenantId } = req.query;
     console.log(req.query)
+
     if (!tenantId) return res.status(400).json({ error: "tenantId required" });
 
     const docs = await Flow.find({ tenantId }).sort({ createdAt: -1 });
+    console.log(docs)
     res.json({ success: true, data: docs });
   } catch (err) {
+    console.log(err)
     res.status(500).json({ error: err.message });
   }
 });
