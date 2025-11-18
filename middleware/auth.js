@@ -8,6 +8,7 @@ export const protect = async (req, res, next) => {
   
   if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
+    console.log(token)
   }
 
   if (!token) {
@@ -16,20 +17,23 @@ export const protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log(decoded)
     const user = await User.findById(decoded.id).select("-password");
-
+    console.log(user)
     if (!user) return res.status(401).json({ message: "User not found" });
 
     req.user = user;
     req.tenantId = user.tenantId; // convenience
     next();
   } catch (err) {
+    console.log(err)
     res.status(401).json({ message: "Token invalid or expired" });
   }
 };
 
 export const authorize = (...roles) => {
   return (req, res, next) => {
+    console.log(req.user)
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ message: `Role '${req.user.role}' not allowed` });
     }

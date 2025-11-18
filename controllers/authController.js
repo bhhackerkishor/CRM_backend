@@ -16,7 +16,7 @@ export const signup = async (req, res) => {
 
     // Create admin user
     const user = await User.create({
-      tenant: tenant._id,
+      tenantId: tenant._id,
       name,
       email,
       password,
