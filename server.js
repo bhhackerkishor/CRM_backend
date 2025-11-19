@@ -27,7 +27,7 @@ import Tenant from "./models/Tenant.js";
 import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
 import Product from "./models/Product.js"
-import Order from "../models/Order.js";
+import Order from "./models/Order.js";
 
 
 // server.js (top, after io creation)
