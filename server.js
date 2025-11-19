@@ -61,14 +61,14 @@ app.use(bodyParser.json());
 
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://your-frontend.vercel.app",
+  "https://chatcom-phi.vercel.app",
   "https://crm-backend.onrender.com",
   "http://crm-backend.onrender.com"
 ];
 
 // UNIVERSAL CORS (Render Safe)
 const corsOptions = {
-  origin: "http://localhost:3000", // Frontend origin (or '*' for any)
+  origin: allowedOrigins, // Frontend origin (or '*' for any)
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
