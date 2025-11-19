@@ -409,8 +409,6 @@ async function executeNode(flow, run, tenant, to, node) {
       await run.save();
       return { stop: true };
 
-      case "capture"
-
       case "condition":
   const result = evaluateCondition(node, run.context);
   const branch = result ? "true" : "false";
