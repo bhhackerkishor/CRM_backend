@@ -142,7 +142,7 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
         break;
 
       // 7️⃣ Input node (expect user text)
-      case "input_node":
+      case "capture":
         run.status = "waiting";
         run.context.waitingNodeId = current.id;
         run.context.waitingFor = "text_reply";
@@ -408,6 +408,8 @@ async function executeNode(flow, run, tenant, to, node) {
       console.log("workingsendInteractiveend")
       await run.save();
       return { stop: true };
+
+      case "capture"
 
       case "condition":
   const result = evaluateCondition(node, run.context);
