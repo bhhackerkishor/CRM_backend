@@ -41,7 +41,7 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
       notify: { sms: true, email: false }
     });
     
-
+    console.log("paymentlink",paymentLink)
     const order = await Order.create({
       phone,
       items,
