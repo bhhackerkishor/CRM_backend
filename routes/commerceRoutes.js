@@ -38,7 +38,9 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
       currency: "INR",
       customer: { contact: phone },
       description: "Order Payment",
-      notify: { sms: true, email: false }
+      create_order: true,               // ← create a Razorpay order (order_xxx)
+      notes: { localOrderId: String(localOrder._id) },
+      notify: { sms: true, email: false, whatsapp: false }
     });
     
     console.log("paymentlink",paymentLink)
@@ -47,10 +49,11 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
       items,
       amount,
       tenantId,
-      razorpayOrderId: paymentLink.order_id,
+      paymentLinkId: paymentLink.id,         // plink_...
+      razorpayOrderId: paymentLink.order_id, // order_...
       status: "pending",
     });
-
+    
     await axios.post(
       `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
       {

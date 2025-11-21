@@ -102,7 +102,6 @@ app.use("/api/v1/messages", messageRoutes);
 app.use("/api/v1/flows", flowRoutes);
 app.use("/api/v1/commerce", commerceRoutes);
 
-
 startScheduler();
 
 // === WhatsApp Webhook Verification ===
@@ -148,6 +147,7 @@ app.post("/api/webhook", async (req, res) => {
       // SAMPLE: If user types 'hi' → send product list
 if (text.trim().toLowerCase() === "hi") {
   const products = await Product.find({});
+  await sendProductList(userPhone,products);
 
   const itemsText = products
     .map(
@@ -329,3 +329,36 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+export const sendProductList = async (userPhone ,products) => {
+
+  
+  return await axios.post(
+    `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: userPhone,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        header: { type: "text", text: "🛒 RegalMints Store" },
+        body: { text: "Choose your favourite product 👇" },
+        footer: { text: "Secure Payment – Fast Delivery" },
+        action: {
+          button: "View Products",
+          sections: [
+            {
+              title: "Available Items",
+              rows: products.map((p, index) => ({
+                id: `BUY_${p._id}`, // unique for DB match
+                title: p.name,
+                description: `₹${p.price} • ${p.description.slice(0, 40)}...`,
+              })),
+            },
+          ],
+        },
+      },
+    },
+    { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+  );
+};

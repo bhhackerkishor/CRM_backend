@@ -6,6 +6,7 @@ const orderSchema = new mongoose.Schema({
   amount: Number,
   tenantId: mongoose.Schema.Types.ObjectId,
   razorpayOrderId: String,
+  paymentLinkId:String,
   status: {
     type: String,
     default: "pending",
