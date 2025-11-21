@@ -6,7 +6,7 @@ import Order from "../models/Order.js";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import axios from "axios";
-
+import Tenant from "../models/Tenant.js"
 dotenv.config();
 
 const router = express.Router();
