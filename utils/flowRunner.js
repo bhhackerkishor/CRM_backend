@@ -20,7 +20,7 @@ async function sendText(tenant, to, text) {
 }
 
 async function sendInteractive(tenant, to, data) {
-  console.log("sendInteractive")
+  
   
 
   try {
@@ -47,7 +47,7 @@ async function sendInteractive(tenant, to, data) {
       { headers: { Authorization: `Bearer ${tenant.accessToken}` } }
     );
   
-    console.log("WhatsApp API Success:", response.data);
+    //console.log("WhatsApp API Success:", response.data);
     
   await Message.create({ tenantId: tenant._id, from: tenant.phoneNumberId, to, message: data.title, direction: "outbound", status: "sent", media: data.image || null });
 
@@ -71,7 +71,7 @@ async function sendInteractive(tenant, to, data) {
   
 }
 export async function startFlow(flowId, userPhone) {
-  console.log(flowId, userPhone)
+  //console.log(flowId, userPhone)
   const flow = await Flow.findById(flowId);
   if (!flow) throw new Error("Flow not found");
 
@@ -146,18 +146,33 @@ while (current) {
       // 3️⃣ Condition
       case "condition": {
         const result = evaluateCondition(current, run.context);
-        const handle = result ? "true" : "false";
-
-        const nextEdge = flow.edges.find(
+        let handle = result ? "true" : "false";
+      
+        // TRY true or false first
+        let nextEdge = flow.edges.find(
           e => e.source === current.id && e.sourceHandle === handle
         );
-
+      
+        // IF false but no edge found → check ELSE IF
+        if (!result && !nextEdge) {
+          nextEdge = flow.edges.find(
+            e => e.source === current.id && e.sourceHandle === "else_if"
+          );
+        }
+      
+        // IF no else_if → check ELSE
+        if (!result && !nextEdge) {
+          nextEdge = flow.edges.find(
+            e => e.source === current.id && e.sourceHandle === "else"
+          );
+        }
+      
         current = nextEdge
           ? flow.nodes.find(n => n.id === nextEdge.target)
           : null;
-
         continue;
       }
+      
 
       // 4️⃣ Wait
       case "wait":
@@ -167,7 +182,7 @@ while (current) {
       // 5️⃣ API call
       case "call_api":
         try {
-          await axios.post(data.url, { user: userPhone, ctx: run.context });
+          await axios.post(data.url, { user: userPhone, ctx: run.context },{ timeout: 15000 });
         } catch (err) {
           console.log("API failed:", err.message);
         }
@@ -182,6 +197,7 @@ while (current) {
 
       // 7️⃣ Input node (expect user text)
       case "capture":
+        console.log(type)
         await sendText(tenant, userPhone, resolveVariables(data.prompt, run.context));
         run.status = "waiting";
         run.context.waitingNodeId = current.id;
@@ -236,9 +252,24 @@ export async function continueFlowByUserReply(userPhone, replyIdOrText) {
     nextNode = findInputNextNode(flow, run, replyIdOrText);
 
     // save text to context
-    run.context.lastUserMessage = replyIdOrText;
-    run.markModified("context");
-    await run.save();
+    // Save captured text to correct variable (example: "user.name")
+const waitingNode = flow.nodes.find(n => n.id === run.context.waitingNodeId);
+
+if (waitingNode?.type === "capture" && waitingNode.data?.variable) {
+  const path = waitingNode.data.variable.split("."); // ["user", "name"] etc.
+  let ref = run.context;
+
+  for (let i = 0; i < path.length - 1; i++) {
+    ref[path[i]] = ref[path[i]] || {}; // create nested object if not exists
+    ref = ref[path[i]];
+  }
+
+  ref[path[path.length - 1]] = replyIdOrText; // assign final value
+}
+
+run.markModified("context");
+await run.save();
+
   }
 
   if (!nextNode) {
@@ -348,13 +379,30 @@ function resolveVariables(text, context) {
   });
 }
 function evaluateCondition(node, context) {
-  const left = node.data.left?.split('.').reduce((acc, k) => acc?.[k], context);
-  const right = node.data.right;
-  switch (node.data.operator) {
-    case "==": return left == right;
-    case "!=": return left != right;
-    case ">":  return Number(left) > Number(right);
-    case "<":  return Number(left) < Number(right);
-    default: return false;
-  }
+  if (!node.data || !Array.isArray(node.data.rules)) return false;
+
+  const logic = node.data.logic || "AND";
+
+  const evalRule = (rule) => {
+    const left = rule.left.split(".").reduce((acc, k) => acc?.[k], context);
+    const right = rule.right;
+
+    switch (rule.operator) {
+      case "==": return left == right;
+      case "!=": return left != right;
+      case ">": return Number(left) > Number(right);
+      case "<": return Number(left) < Number(right);
+      case ">=": return Number(left) >= Number(right);
+      case "<=": return Number(left) <= Number(right);
+      case "includes": return String(left)?.includes(String(right));
+      default: return false;
+    }
+  };
+
+  const results = node.data.rules.map(evalRule);
+
+  return logic === "AND"
+    ? results.every(r => r === true)
+    : results.some(r => r === true);
 }
+
