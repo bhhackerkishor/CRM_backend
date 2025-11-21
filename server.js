@@ -167,7 +167,7 @@ app.post("/api/webhook", async (req, res) => {
       // SAMPLE: If user types 'hi' → send product list
 if (text.trim().toLowerCase() === "hi") {
   const products = await Product.find({});
-  await sendProductList(userPhone,products);
+  await sendProductList(userPhone,products,tenantId);
 
   return res.sendStatus(200);
 }
@@ -325,11 +325,16 @@ server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-export const sendProductList = async (userPhone ,products) => {
+export const sendProductList = async (userPhone, products, tenantPhoneId) => {
+  // Truncate safely
+  const safeProducts = products.map(p => ({
+    ...p,
+    name: p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name, // Title ≤20 chars
+    description: p.description ? p.description.slice(0, 60) + (p.description.length > 60 ? '...' : '') : '', // Desc ≤60 chars
+  }));
 
-  
   return await axios.post(
-    `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+    `https://graph.facebook.com/v24.0/${tenantPhoneId}/messages`, // ↑ v24.0 (explicit)
     {
       messaging_product: "whatsapp",
       to: userPhone,
@@ -344,10 +349,10 @@ export const sendProductList = async (userPhone ,products) => {
           sections: [
             {
               title: "Available Items",
-              rows: products.map((p, index) => ({
-                id: `BUY_${p._id}`, // unique for DB match
-                title: p.name,
-                description: `₹${p.price} • ${p.description.slice(0, 40)}...`,
+              rows: safeProducts.map((p, index) => ({
+                id: `BUY_${p._id}`, // Unique
+                title: p.name, // Now ≤20 chars
+                description: `₹${p.price} • ${p.description}`, // Now ≤72 chars total
               })),
             },
           ],
