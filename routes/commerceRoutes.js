@@ -29,18 +29,15 @@ router.get("/products", async (req, res) => {
 
 // === 2. CREATE ORDER + SEND PAYMENT LINK ===
 router.post("/order", async (req, res) => {
-  console.log("Incoming Order Request:", req.body);
-
   try {
     const { phone, items, tenantId } = req.body;
-
-    if (!phone || !items || !tenantId) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!phone || !items?.length || !tenantId) {
+      return res.status(400).json({ error: "Missing fields" });
     }
 
-    const amount = items.reduce((total, i) => total + i.price * i.qty, 0);
+    const amount = items.reduce((t, i) => t + i.price * i.qty, 0);
 
-    // Create local order FIRST
+    // 1. Save order first
     const order = await Order.create({
       phone,
       items,
@@ -49,7 +46,7 @@ router.post("/order", async (req, res) => {
       status: "pending",
     });
 
-    // Create Razorpay Payment Link
+    // 2. Create Razorpay payment link
     const paymentLink = await razorpay.paymentLink.create({
       amount: amount * 100,
       currency: "INR",
@@ -61,59 +58,66 @@ router.post("/order", async (req, res) => {
         tenantId: tenantId.toString(),
         phone,
       },
-      callback_url: `${process.env.FRONTEND_URL || "https://yourdomain.com"}/payment-success`,
-      callback_method: "get",
     });
 
-    // Update order with Razorpay IDs
+    // 3. Update order with Razorpay IDs
     order.paymentLinkId = paymentLink.id;
     order.razorpayOrderId = paymentLink.order_id;
     await order.save();
 
-    // Send Beautiful WhatsApp Message with Button
-    const itemsText = items.map(i => `• ${i.name} × ${i.qty} = ₹${i.price * i.qty}`).join("\n");
-    const messagePayload = {
-      messaging_product: "whatsapp",
-      to: phone,
-      type: "interactive",
-      interactive: {
-        type: "button",
-        body: {
-          text: `*Order Summary*\n\n${itemsText}\n\n*Total Amount: ₹${amount}*\n\nPlease complete your payment to confirm the order.`,
-        },
-        action: {
-          buttons: [
-            {
-              type: "reply",
-              reply: {
-                id: "PAY_NOW",
-                title: "Pay ₹" + amount,
-              },
-            },
-          ],
-        },
-        footer: { text: "Secure payment powered by Razorpay" },
-      },
-    };
+    // 4. Get tenant's phone_number_id
+    const tenant = await Tenant.findById(tenantId);
+    const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
 
-    // Attach URL to button (WhatsApp auto-opens link on tap)
-    messagePayload.interactive.action.buttons[0].url = paymentLink.short_url;
+    // 5. Build pretty message
+    const itemsText = items
+      .map(i => `• ${i.name} × ${i.qty} = ₹${i.price * i.qty}`)
+      .join("\n");
 
+    // ---- REPLY BUTTON (no url field) ----
     await axios.post(
-      `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
-      messagePayload,
+      `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
       {
-        headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
-      }
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "interactive",
+        interactive: {
+          type: "button",
+          body: {
+            text: `*Order Summary*\n\n${itemsText}\n\n*Total: ₹${amount}*\n\nTap **Pay Now** to complete payment.`,
+          },
+          action: {
+            buttons: [
+              {
+                type: "reply",
+                reply: {
+                  id: "PAY_NOW",
+                  title: `Pay ₹${amount}`,
+                },
+              },
+            ],
+          },
+          footer: { text: "Secure payment – Razorpay" },
+        },
+      },
+      { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
     );
 
-    return res.json({
-      success: true,
-      order,
-      paymentLink: paymentLink.short_url,
-    });
+    // ---- SEND SHORT URL AS PLAIN TEXT (clickable) ----
+    await axios.post(
+      `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "text",
+        text: { body: paymentLink.short_url },
+      },
+      { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+    );
+
+    return res.json({ success: true, order, paymentLink: paymentLink.short_url });
   } catch (err) {
-    console.error("Order creation error:", err.response?.data || err.message);
+    console.error("Order error:", err.response?.data || err);
     return res.status(500).json({ error: "Failed to create order" });
   }
 });

@@ -144,30 +144,59 @@ app.post("/api/webhook", async (req, res) => {
       msg.interactive?.button_reply?.title ||
       "[Media/Unsupported]";
 
-      if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
-        const productId = msg.interactive.list_reply.id.replace("BUY_", "");
+      // Handle list reply
+if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
+  const productId = msg.interactive.list_reply.id.replace("BUY_", "");
+
+  const product = await Product.findById(productId);
+  if (!product) {
+    await sendMessage(userPhone, tenantPhoneId, "Product not available.");
+    return res.sendStatus(200);
+  }
+
+  // Create order
+  await axios.post(
+    `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
+    {
+      phone: userPhone,
+      tenantId: tenant._id,
+      items: [{ name: product.name, price: product.price, qty: 1 }],
+    }
+  );
+
+  return res.sendStatus(200);
+}
+
+      if (msg.interactive?.button_reply?.id === "PAY_NOW") {
+        // Find the latest pending order for this user
+        const pendingOrder = await Order.findOne({
+          phone: userPhone,
+          status: "pending",
+        }).sort({ createdAt: -1 });
       
-        const product = await Product.findById(productId);
-        if (!product) {
-          await sendMessage(userPhone, tenantPhoneId, "Sorry, that product is no longer available.");
-          return res.sendStatus(200);
+        if (pendingOrder) {
+          // Optionally re-send the payment link (in case they missed it)
+          const tenant = await Tenant.findById(pendingOrder.tenantId);
+          const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
+      
+          await axios.post(
+            `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
+            {
+              messaging_product: "whatsapp",
+              to: userPhone,
+              type: "text",
+              text: { body: `Payment link: ${pendingOrder.paymentLinkId ? `https://rzp.io/l/${pendingOrder.paymentLinkId}` : "Please try again."}` },
+            },
+            { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+          );
         }
-      
-        await axios.post(
-          `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
-          {
-            phone: userPhone,
-            tenantId: tenant._id,
-            items: [{ name: product.name, price: product.price, qty: 1 }],
-          }
-        );
-      
         return res.sendStatus(200);
       }
       // SAMPLE: If user types 'hi' → send product list
 if (text.trim().toLowerCase() === "hi") {
   const products = await Product.find({});
-  await sendProductList(userPhone,products,tenantId);
+  const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
+  await sendProductList(userPhone,products,phoneNumberId);
 
   return res.sendStatus(200);
 }
@@ -324,41 +353,46 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
+// utils/whatsapp.js or at bottom of server.js
 export const sendProductList = async (userPhone, products, tenantPhoneId) => {
-  // Truncate safely
-  const safeProducts = products.map(p => ({
-    ...p,
-    name: p.name.length > 20 ? p.name.slice(0, 20) + '...' : p.name, // Title ≤20 chars
-    description: p.description ? p.description.slice(0, 60) + (p.description.length > 60 ? '...' : '') : '', // Desc ≤60 chars
+  // CRITICAL: Clean the product objects + fix fields
+  const cleanProducts = products.map(p => ({
+    _id: p._id.toString(),
+    name: (p.name || "Unnamed Product").slice(0, 20),
+    price: p.price || 0,
+    description: p.description || "No description",
   }));
 
-  return await axios.post(
-    `https://graph.facebook.com/v24.0/${tenantPhoneId}/messages`, // ↑ v24.0 (explicit)
-    {
-      messaging_product: "whatsapp",
-      to: userPhone,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        header: { type: "text", text: "🛒 RegalMints Store" },
-        body: { text: "Choose your favourite product 👇" },
-        footer: { text: "Secure Payment – Fast Delivery" },
-        action: {
-          button: "View Products",
-          sections: [
-            {
-              title: "Available Items",
-              rows: safeProducts.map((p, index) => ({
-                id: `BUY_${p._id}`, // Unique
-                title: p.name, // Now ≤20 chars
-                description: `₹${p.price} • ${p.description}`, // Now ≤72 chars total
-              })),
-            },
-          ],
-        },
+  const payload = {
+    messaging_product: "whatsapp",
+    to: userPhone,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      header: { type: "text", text: "RegalMints Store" },
+      body: { text: "Choose your favourite product" },
+      footer: { text: "Secure Payment – Fast Delivery" },
+      action: {
+        button: "View Products",
+        sections: [
+          {
+            title: "Available Items",
+            rows: cleanProducts.map(p => ({
+              id: `BUY_${p._id}`,
+              title: p.name,
+              description: `₹${p.price} • ${p.description.slice(0, 55)}`,
+            })),
+          },
+        ],
       },
     },
-    { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+  };
+
+  return axios.post(
+    `https://graph.facebook.com/v24.0/${tenantPhoneId}/messages`,
+    payload,
+    {
+      headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
+    }
   );
 };
