@@ -1,27 +1,30 @@
 // routes/commerce.js
 import express from "express";
-import axios from "axios";
 import Razorpay from "razorpay";
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import axios from "axios";
 
 dotenv.config();
 
 const router = express.Router();
 
-
 // Razorpay Instance
-const razor = new Razorpay({
+const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
 // === 1. GET All Products ===
 router.get("/products", async (req, res) => {
-  const products = await Product.find({});
-  res.json(products);
+  try {
+    const products = await Product.find({ tenantId: req.query.tenantId || null });
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // === 2. CREATE ORDER + SEND PAYMENT LINK ===
@@ -30,155 +33,174 @@ router.post("/order", async (req, res) => {
 
   try {
     const { phone, items, tenantId } = req.body;
+
+    if (!phone || !items || !tenantId) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
     const amount = items.reduce((total, i) => total + i.price * i.qty, 0);
 
-    // 🔥 Create payment link
-    const paymentLink = await razor.paymentLink.create({
-      amount: amount * 100,
-      currency: "INR",
-      customer: { contact: phone },
-      description: `Order Payment`,
-      create_order: true,
-      notify: { sms: true, email: false, whatsapp: false },
-      notes: { tenantId, phone }, // helpful for webhook
-    });
-
-    console.log("paymentlink:", paymentLink);
-
-    // 🔥 Save local order
+    // Create local order FIRST
     const order = await Order.create({
       phone,
       items,
       amount,
       tenantId,
-      paymentLinkId: paymentLink.id,         // plink_xxx
-      razorpayOrderId: paymentLink.order_id, // order_xxx
       status: "pending",
     });
 
-    // 🔥 Send payment link to WhatsApp
+    // Create Razorpay Payment Link
+    const paymentLink = await razorpay.paymentLink.create({
+      amount: amount * 100,
+      currency: "INR",
+      description: `Order #${order._id}`,
+      customer: { contact: phone },
+      notify: { sms: true, whatsapp: false },
+      notes: {
+        localOrderId: order._id.toString(),
+        tenantId: tenantId.toString(),
+        phone,
+      },
+      callback_url: `${process.env.FRONTEND_URL || "https://yourdomain.com"}/payment-success`,
+      callback_method: "get",
+    });
+
+    // Update order with Razorpay IDs
+    order.paymentLinkId = paymentLink.id;
+    order.razorpayOrderId = paymentLink.order_id;
+    await order.save();
+
+    // Send Beautiful WhatsApp Message with Button
+    const itemsText = items.map(i => `• ${i.name} × ${i.qty} = ₹${i.price * i.qty}`).join("\n");
+    const messagePayload = {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: {
+          text: `*Order Summary*\n\n${itemsText}\n\n*Total Amount: ₹${amount}*\n\nPlease complete your payment to confirm the order.`,
+        },
+        action: {
+          buttons: [
+            {
+              type: "reply",
+              reply: {
+                id: "PAY_NOW",
+                title: "Pay ₹" + amount,
+              },
+            },
+          ],
+        },
+        footer: { text: "Secure payment powered by Razorpay" },
+      },
+    };
+
+    // Attach URL to button (WhatsApp auto-opens link on tap)
+    messagePayload.interactive.action.buttons[0].url = paymentLink.short_url;
+
     await axios.post(
       `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
+      messagePayload,
       {
-        messaging_product: "whatsapp",
-        to: phone,
-        type: "text",
-        text: {
-          body: `🛒 Total: ₹${amount}\nPay securely 👇\n${paymentLink.short_url}\n\nReply DONE after payment.`,
-        },
-      },
-      { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+        headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
+      }
     );
 
-    return res.json({ success: true, order, paymentLink: paymentLink.short_url });
+    return res.json({
+      success: true,
+      order,
+      paymentLink: paymentLink.short_url,
+    });
   } catch (err) {
-    console.log("Order error:", err?.response?.data || err);
+    console.error("Order creation error:", err.response?.data || err.message);
     return res.status(500).json({ error: "Failed to create order" });
   }
 });
 
-
-// enhanced webhook
+// === Razorpay Webhook ===
 export const razorpayWebhook = async (req, res) => {
-  console.log("🔔 [WEBHOOK RECEIVED]");
-  console.log("Headers:", req.headers);
-  console.log("Body:", JSON.stringify(req.body));
-
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
   const signature = req.headers["x-razorpay-signature"];
-  const expected = crypto.createHmac("sha256", secret).update(JSON.stringify(req.body)).digest("hex");
 
-  if (expected !== signature) {
-    console.log("❌ Invalid signature");
-    return res.status(403).send("Invalid signature");
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(JSON.stringify(req.body))
+    .digest("hex");
+
+  if (expectedSignature !== signature) {
+    console.log("Invalid webhook signature");
+    return res.status(400).json({ error: "Invalid signature" });
   }
 
-  try {
-    const event = req.body;
-    if (event.event !== "payment.captured") {
-      console.log("Ignored event:", event.event);
-      return res.status(200).send("ignored");
-    }
+  const event = req.body;
 
+  if (event.event === "payment.captured") {
     const payment = event.payload.payment.entity;
     const paymentId = payment.id;
     const amount = payment.amount / 100;
-    const orderId = payment.order_id;           // order_xxx (may be undefined for some flows)
-    const description = payment.description || ""; // often "#plink_..."
-    const contact = payment.contact || payment.vpa || payment.email;
 
-    console.log({ paymentId, amount, orderId, description, contact });
-
-    // 1) Try find by razorpayOrderId (order_xxx)
     let order = null;
-    if (orderId) {
-      order = await Order.findOne({ razorpayOrderId: orderId });
-      console.log("Find by razorpayOrderId:", order ? "FOUND" : "NOT FOUND");
+
+    // Priority 1: Match by localOrderId in notes (100% reliable)
+    if (payment.notes?.localOrderId) {
+      order = await Order.findById(payment.notes.localOrderId);
     }
 
-    // 2) Try find by paymentLinkId if description contains #plink_...
-    if (!order && description) {
-      const possiblePlink = description.replace(/^#/, "").trim(); // strip leading #
-      if (possiblePlink.startsWith("plink_")) {
-        order = await Order.findOne({ paymentLinkId: possiblePlink });
-        console.log("Find by paymentLinkId (from description):", order ? "FOUND" : "NOT FOUND");
+    // Priority 2: Fallback to order_id
+    if (!order && payment.order_id) {
+      order = await Order.findOne({ razorpayOrderId: payment.order_id });
+    }
+
+    // Priority 3: Fallback to payment link ID
+    if (!order && payment.description) {
+      const plink = payment.description.replace(/^#/, "");
+      if (plink.startsWith("plink_")) {
+        order = await Order.findOne({ paymentLinkId: plink });
       }
     }
 
-    // 3) Try find by notes.localOrderId (if you stored notes when creating link)
-    if (!order && payment.notes) {
-      if (payment.notes.localOrderId) {
-        order = await Order.findById(payment.notes.localOrderId);
-        console.log("Find by notes.localOrderId:", order ? "FOUND" : "NOT FOUND");
-      }
-    }
-
-    // 4) Fallback: match by phone + amount + pending order (last resort)
     if (!order) {
-      const normalizedContact = (contact || "").replace(/\D/g, "");
-      order = await Order.findOne({
-        phone: new RegExp(normalizedContact.slice(-10) + "$"), // match last 10 digits
-        amount,
-        status: "pending",
-      }).sort({ createdAt: -1 });
-      console.log("Fallback match by phone+amount:", order ? "FOUND" : "NOT FOUND");
-    }
-
-    if (!order) {
-      console.log("⚠ Unable to match payment to any order. PaymentId:", paymentId);
-      // store the payment record in a separate collection for manual reconciliation
-      // or call razor.paymentLink.fetch(description) to obtain the linked order_id
-      return res.status(200).json({ message: "Order not found" });
+      console.log("Order not found for payment:", paymentId);
+      return res.status(200).json({ status: "unmatched_payment" });
     }
 
     // Update order
     order.status = "paid";
     order.paymentId = paymentId;
+    order.paidAt = new Date();
     await order.save();
-    console.log("💾 Order updated to PAID:", order._id);
 
-    // Send WhatsApp confirmation
+    console.log(`Order ${order._id} marked as PAID`);
+
+    // Send Confirmation Message
+    const tenant = await import("../models/Tenant.js").then(m => m.default.findById(order.tenantId));
+    const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
+
+    const itemsText = order.items.map(i => `• ${i.name} × ${i.qty}`).join("\n");
+
     try {
-      await axios.post(`https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`, {
-        messaging_product: "whatsapp",
-        to: order.phone,
-        type: "text",
-        text: {
-          body: `🎉 Payment successful!\nOrder: ${order._id}\nAmount: ₹${amount}`,
+      await axios.post(
+        `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+        {
+          messaging_product: "whatsapp",
+          to: order.phone,
+          type: "text",
+          text: {
+            body: `Payment Successful!\n\n*Order Confirmed*\nOrder ID: ${order._id}\nAmount: ₹${amount}\n\n*Items:*\n${itemsText}\n\nThank you for your purchase! Your order is being processed.\nWe'll notify you when it's shipped.`,
+          },
         },
-      }, { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` }});
-      console.log("📨 WhatsApp confirmation sent");
+        { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+      );
     } catch (waErr) {
-      console.log("⚠ WhatsApp send error:", waErr?.response?.data || waErr.message);
+      console.log("Failed to send confirmation:", waErr.response?.data || waErr.message);
     }
-
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.log("Webhook error", err);
-    return res.status(500).json({ error: "server error" });
   }
+
+  res.status(200).json({ status: "ok" });
 };
 
-router.post("/webhook", express.json({ verify: false }), razorpayWebhook);
+// Webhook Route
+router.post("/webhook", express.raw({ type: "application/json" }), razorpayWebhook);
 
 export default router;

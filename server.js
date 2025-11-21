@@ -144,35 +144,30 @@ app.post("/api/webhook", async (req, res) => {
       msg.interactive?.button_reply?.title ||
       "[Media/Unsupported]";
 
+      if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
+        const productId = msg.interactive.list_reply.id.replace("BUY_", "");
+      
+        const product = await Product.findById(productId);
+        if (!product) {
+          await sendMessage(userPhone, tenantPhoneId, "Sorry, that product is no longer available.");
+          return res.sendStatus(200);
+        }
+      
+        await axios.post(
+          `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
+          {
+            phone: userPhone,
+            tenantId: tenant._id,
+            items: [{ name: product.name, price: product.price, qty: 1 }],
+          }
+        );
+      
+        return res.sendStatus(200);
+      }
       // SAMPLE: If user types 'hi' → send product list
 if (text.trim().toLowerCase() === "hi") {
   const products = await Product.find({});
   await sendProductList(userPhone,products);
-
-  const itemsText = products
-    .map(
-      (p, i) =>
-        `${i + 1}. ${p.name} - ₹${p.price}\nReply: BUY ${i + 1}`
-    )
-    .join("\n\n");
-
-  await axios.post(
-    `https://graph.facebook.com/v20.0/${tenantPhoneId}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: userPhone,
-      type: "text",
-      text: {
-        body:
-          "🛒 *Our Products*\n\n" + itemsText + "\n\nExample: BUY 1",
-      },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
-      },
-    }
-  );
 
   return res.sendStatus(200);
 }
