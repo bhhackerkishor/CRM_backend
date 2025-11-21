@@ -20,6 +20,8 @@ import commerceRoutes from "./routes/commerceRoutes.js";
 
 import { startScheduler } from "./services/scheduler.js";
 import { startFlow, continueFlowByUserReply } from "./utils/flowRunner.js";
+import {sendProductCarousel} from "./utils/sendCarousel.js";
+
 
 import Message from "./models/Message.js";
 import Contact from "./models/Contact.js";
@@ -197,6 +199,7 @@ if (text.trim().toLowerCase() === "hi") {
   const products = await Product.find({});
   const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
   await sendProductList(userPhone,products,phoneNumberId);
+  await sendProductCarousel(userPhone, products, tenantPhoneId);
 
   return res.sendStatus(200);
 }

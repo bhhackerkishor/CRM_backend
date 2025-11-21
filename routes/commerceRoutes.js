@@ -89,11 +89,9 @@ router.post("/order", async (req, res) => {
           action: {
             buttons: [
               {
-                type: "reply",
-                reply: {
-                  id: "PAY_NOW",
-                  title: `Pay ₹${amount}`,
-                },
+                type: "url",
+                url: paymentLink.short_url,
+                title: `Pay ₹${amount}`,
               },
             ],
           },
