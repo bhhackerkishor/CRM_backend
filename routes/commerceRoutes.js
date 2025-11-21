@@ -27,32 +27,36 @@ router.get("/products", async (req, res) => {
 // === 2. CREATE ORDER + SEND PAYMENT LINK ===
 router.post("/order", async (req, res) => {
   console.log("Incoming Order Request:", req.body);
-console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RAZORPAY_KEY_SECRET ? "exists" : "missing");
 
   try {
     const { phone, items, tenantId } = req.body;
-    const amount = items.reduce((total, i) => total + (i.price * i.qty), 0);
+    const amount = items.reduce((total, i) => total + i.price * i.qty, 0);
 
-    const paymentLink = razor.paymentLink.create({
+    // 🔥 Create payment link
+    const paymentLink = await razor.paymentLink.create({
       amount: amount * 100,
       currency: "INR",
       customer: { contact: phone },
-      description: "Order Payment",
-      create_order: true,               // ← create a Razorpay order (order_xxx)
-      notify: { sms: true, email: false, whatsapp: false }
+      description: `Order Payment`,
+      create_order: true,
+      notify: { sms: true, email: false, whatsapp: false },
+      notes: { tenantId, phone }, // helpful for webhook
     });
-    
-    console.log("paymentlink",paymentLink)
+
+    console.log("paymentlink:", paymentLink);
+
+    // 🔥 Save local order
     const order = await Order.create({
       phone,
       items,
       amount,
       tenantId,
-      paymentLinkId: paymentLink.id,         // plink_...
-      razorpayOrderId: paymentLink.order_id, // order_...
+      paymentLinkId: paymentLink.id,         // plink_xxx
+      razorpayOrderId: paymentLink.order_id, // order_xxx
       status: "pending",
     });
 
+    // 🔥 Send payment link to WhatsApp
     await axios.post(
       `https://graph.facebook.com/v20.0/${process.env.PHONE_NUMBER_ID}/messages`,
       {
@@ -60,17 +64,16 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
         to: phone,
         type: "text",
         text: {
-          body: `🛒 Your Total: ₹${amount}\nClick below to pay securely 👇\n${paymentLink.short_url}\n\nReply DONE after payment.`,
+          body: `🛒 Total: ₹${amount}\nPay securely 👇\n${paymentLink.short_url}\n\nReply DONE after payment.`,
         },
       },
       { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
     );
 
-    res.json({ success: true, order });
+    return res.json({ success: true, order, paymentLink: paymentLink.short_url });
   } catch (err) {
-    
-    console.log("Order error:", err);
-    res.status(500).json({ error: "Failed to create order" });
+    console.log("Order error:", err?.response?.data || err);
+    return res.status(500).json({ error: "Failed to create order" });
   }
 });
 
