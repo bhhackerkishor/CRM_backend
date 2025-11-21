@@ -89,9 +89,11 @@ router.post("/order", async (req, res) => {
           action: {
             buttons: [
               {
-                type: "url",
-                url: paymentLink.short_url,
-                title: `Pay ₹${amount}`,
+                type: "reply",  // ← THIS IS THE ONLY VALID TYPE
+                reply: {
+                  id: "PAY_NOW",
+                  title: `Pay ₹${amount}`,
+                },
               },
             ],
           },

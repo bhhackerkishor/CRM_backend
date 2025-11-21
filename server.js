@@ -5,7 +5,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
-import axios from "axios"
+import axios from "axios";
 
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
@@ -17,84 +17,44 @@ import messageRoutes from "./routes/message.js";
 import flowRoutes from "./routes/flowRoutes.js";
 import commerceRoutes from "./routes/commerceRoutes.js";
 
-
 import { startScheduler } from "./services/scheduler.js";
 import { startFlow, continueFlowByUserReply } from "./utils/flowRunner.js";
-import {sendProductCarousel} from "./utils/sendCarousel.js";
-
 
 import Message from "./models/Message.js";
 import Contact from "./models/Contact.js";
 import Tenant from "./models/Tenant.js";
 import Flow from "./models/Flow.js";
 import FlowRun from "./models/FlowRun.js";
-import Product from "./models/Product.js"
+import Product from "./models/Product.js";
 import Order from "./models/Order.js";
 
-
-// server.js (top, after io creation)
 import { attachIo } from "./middleware/attachIo.js";
 
-
 dotenv.config();
+connectDB();
 
-async function sendMessage(to, from, body) {
-  await axios.post(
-    `https://graph.facebook.com/v20.0/${from}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "text",
-      text: { body },
-    },
-    {
-      headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
-    }
-  );
-}
-
-
-
-// === App Setup ===
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { path: "/socket.io" });
 
-
-app.use(bodyParser.json());
-
-
+// CORS
 const allowedOrigins = [
   "http://localhost:3000",
   "https://chatcom-phi.vercel.app",
   "https://crm-backend.onrender.com",
-  "http://crm-backend.onrender.com"
+  "http://crm-backend.onrender.com",
 ];
 
-// UNIVERSAL CORS (Render Safe)
-const corsOptions = {
-  origin: allowedOrigins, // Frontend origin (or '*' for any)
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+app.use(cors({
+  origin: allowedOrigins,
   credentials: true,
-};
+}));
 
-app.use(cors(corsOptions));
-
-// HTTP + Socket.IO
-const server = http.createServer(app);
-const io = new Server(server, {
-  path: "/socket.io",
-});
-
-
-// === DB ===
-connectDB();
-
-// === Middleware: Attach io + tenant + user to req ===
+app.use(bodyParser.json());
 app.use(attachIo(io));
 
-// === Routes ===
+// Routes
 app.get("/", (req, res) => res.send("ChatCom Backend Running"));
-
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/tenants", tenantRoutes);
 app.use("/api/v1/contacts", contactRoutes);
@@ -106,11 +66,51 @@ app.use("/api/v1/commerce", commerceRoutes);
 
 startScheduler();
 
+// === SEND CAROUSEL WITH IMAGES ===
+const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
+  const items = products.slice(0, 10); // Max 10 cards
+
+  const cards = items.map(p => ({
+    card_index: items.indexOf(p),
+    header: {
+      type: "image",
+      image: {
+        link: p.image || "https://via.placeholder.com/400x300.png?text=No+Image",
+      },
+    },
+    body: {
+      text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`,
+    },
+    footer: { text: "In Stock • Fast Delivery" },
+    action: {
+      buttons: [
+        {
+          type: "reply",
+          reply: {
+            id: `BUY_${p._id}`,
+            title: "Buy Now",
+          },
+        },
+      ],
+    },
+  }));
+
+  await axios.post(
+    `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: userPhone,
+      type: "interactive",
+      interactive: { type: "carousel", cards },
+    },
+    { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+  );
+};
+
 // === WhatsApp Webhook Verification ===
 app.get("/api/webhook", (req, res) => {
   const { "hub.mode": mode, "hub.verify_token": token, "hub.challenge": challenge } = req.query;
   if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
-    console.log("Webhook verified");
     return res.status(200).send(challenge);
   }
   res.sendStatus(403);
@@ -120,282 +120,119 @@ app.get("/api/webhook", (req, res) => {
 app.post("/api/webhook", async (req, res) => {
   try {
     const value = req.body.entry?.[0]?.changes?.[0]?.value;
-    console.log(value,req.body)
     if (!value?.messages?.[0]) return res.sendStatus(200);
 
     const msg = value.messages[0];
     const userPhone = msg.from;
-    const tenantPhoneId = value.metadata.phone_number_id;
+    const phoneNumberId = value.metadata.phone_number_id;
 
-    const tenant = await Tenant.findOne({ phoneNumberId: tenantPhoneId });
+    const tenant = await Tenant.findOne({ phoneNumberId });
     if (!tenant) return res.sendStatus(404);
 
     const tenantId = tenant._id;
-    const profileName = value.contacts?.[0]?.profile?.name || "";
 
-    // === Upsert Contact ===
+    // Upsert contact
     const contact = await Contact.findOneAndUpdate(
       { phone: userPhone, tenantId },
-      { name: profileName, lastIncomingAt: new Date(), source: "whatsapp" },
+      { name: value.contacts?.[0]?.profile?.name || "User", lastIncomingAt: new Date() },
       { upsert: true, new: true }
     );
 
-    // === Extract Message Text ===
-    const text =
-      msg.text?.body ||
-      msg.interactive?.button_reply?.title ||
-      "[Media/Unsupported]";
+    const text = msg.text?.body || msg.interactive?.button_reply?.title || "[Media]";
 
-      // Handle list reply
-if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
-  const productId = msg.interactive.list_reply.id.replace("BUY_", "");
+    // === 1. Product Selected from Carousel ===
+    if (msg.interactive?.button_reply?.id?.startsWith("BUY_")) {
+      const productId = msg.interactive.button_reply.id.replace("BUY_", "");
+      const product = await Product.findById(productId);
 
-  const product = await Product.findById(productId);
-  if (!product) {
-    await sendMessage(userPhone, tenantPhoneId, "Product not available.");
-    return res.sendStatus(200);
-  }
-
-  // Create order
-  await axios.post(
-    `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
-    {
-      phone: userPhone,
-      tenantId: tenant._id,
-      items: [{ name: product.name, price: product.price, qty: 1 }],
-    }
-  );
-
-  return res.sendStatus(200);
-}
-
-      if (msg.interactive?.button_reply?.id === "PAY_NOW") {
-        // Find the latest pending order for this user
-        const pendingOrder = await Order.findOne({
-          phone: userPhone,
-          status: "pending",
-        }).sort({ createdAt: -1 });
-      
-        if (pendingOrder) {
-          // Optionally re-send the payment link (in case they missed it)
-          const tenant = await Tenant.findById(pendingOrder.tenantId);
-          const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
-      
-          await axios.post(
-            `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
-            {
-              messaging_product: "whatsapp",
-              to: userPhone,
-              type: "text",
-              text: { body: `Payment link: ${pendingOrder.paymentLinkId ? `https://rzp.io/l/${pendingOrder.paymentLinkId}` : "Please try again."}` },
-            },
-            { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
-          );
-        }
+      if (!product) {
+        await axios.post(`https://graph.facebook.com/v24.0/${phoneNumberId}/messages`, {
+          messaging_product: "whatsapp",
+          to: userPhone,
+          type: "text",
+          text: { body: "Sorry, that product is no longer available." },
+        }, { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } });
         return res.sendStatus(200);
       }
-      // SAMPLE: If user types 'hi' → send product list
-if (text.trim().toLowerCase() === "hi") {
-  const products = await Product.find({});
-  const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
-  await sendProductList(userPhone,products,phoneNumberId);
-  await sendProductCarousel(userPhone, products, tenantPhoneId);
 
-  return res.sendStatus(200);
-}
-
-// SAMPLE: Detect BUY Command
-if (text.toLowerCase().startsWith("buy")) {
-  const productIndex = parseInt(text.split(" ")[1]) - 1;
-
-  const products = await Product.find({});
-  const product = products[productIndex];
-
-  if (!product) {
-    await sendMessage(userPhone, tenantPhoneId, "Invalid product number.");
-    return res.sendStatus(200);
-  }
-
-  // Create a sample order via commerce route
-  const orderResp = await axios.post(
-    "https://crm-backend-c54a.onrender.com/api/v1/commerce/order",
-    {
-      phone: userPhone,
-      tenantId: tenant._id,
-      items: [
+      await axios.post(
+        `${process.env.BACKEND_URL || "https://crm-backend-c54a.onrender.com"}/api/v1/commerce/order`,
         {
-          name: product.name,
-          price: product.price,
-          qty: 1,
-        },
-      ],
+          phone: userPhone,
+          tenantId: tenant._id,
+          items: [{ name: product.name, price: product.price, qty: 1 }],
+        }
+      );
+
+      return res.sendStatus(200);
     }
-  );
 
-  return res.sendStatus(200);
-}
-
-
-
-      // Detect Payment Confirmation
-if (text.trim().toLowerCase() === "done") {
-  console.log("done part ")
-  const pendingOrder = await Order.findOne({ phone: userPhone, status: "pending" })
-    .sort({ createdAt: -1 });
-
-  if (pendingOrder) {
-    pendingOrder.status = "paid";
-    await pendingOrder.save();
-
-    await axios.post(
-      `https://graph.facebook.com/v20.0/${tenantPhoneId}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: userPhone,
-        type: "text",
-        text: { body: "✅ Payment Received! Your order is confirmed." },
-      },
-      {
-        headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
-      }
-    );
-  }
-}
-
-
-    // === Save Message with Contact ID ===
-    const message = await Message.create({
-      tenantId,
-      contact: contact._id, // ← Critical for populate
-      from: userPhone,
-      to: tenantPhoneId,
-      message: text,
-      direction: "inbound",
-      status: "delivered",
-      timestamp: new Date(),
-    });
-
-    // === Emit to tenant room ===
-    io.to(`tenant_${tenantId}`).emit("newMessage", message);
-
-    // === Flow Logic ===
-    const waitingRun = await FlowRun.findOne({
-      userPhone,
-      tenantId,
-      status: "waiting",
-    }).sort({ updatedAt: -1 });
-
-    if (waitingRun) {
-      if (msg.interactive?.button_reply?.id) {
-        await continueFlowByUserReply(userPhone, msg.interactive.button_reply.id);
-      } else {
-        await continueFlowByUserReply(userPhone, text);
+    // === 2. User Tapped "Pay Now" Button ===
+    if (msg.interactive?.button_reply?.id === "PAY_NOW") {
+      const order = await Order.findOne({ phone: userPhone, status: "pending" }).sort({ createdAt: -1 });
+      if (order?.paymentLinkId) {
+        await axios.post(`https://graph.facebook.com/v24.0/${phoneNumberId}/messages`, {
+          messaging_product: "whatsapp",
+          to: userPhone,
+          type: "text",
+          text: { body: `Payment link (reminder):\nhttps://rzp.io/l/${order.paymentLinkId}` },
+        }, { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } });
       }
       return res.sendStatus(200);
     }
 
-    const incomingLower = text.trim().toLowerCase();
-    const flows = await Flow.find({
+    // === 3. User says "hi" → Show Products with Images ===
+    if (text.trim().toLowerCase() === "hi") {
+      const products = await Product.find({ tenantId }); // or .find({}) if global
+      await sendProductCarousel(userPhone, products, phoneNumberId);
+      return res.sendStatus(200);
+    }
+
+    // === 4. Save Message & Flow Logic ===
+    await Message.create({
       tenantId,
-      isActive: true,
-      "triggers.keywords": { $exists: true, $ne: [] },
+      contact: contact._id,
+      from: userPhone,
+      to: phoneNumberId,
+      message: text,
+      direction: "inbound",
+      status: "delivered",
     });
 
+    io.to(`tenant_${tenantId}`).emit("newMessage", { userPhone, text });
+
+    // Flow handling (your existing logic)
+    const waitingRun = await FlowRun.findOne({ userPhone, tenantId, status: "waiting" }).sort({ updatedAt: -1 });
+    if (waitingRun) {
+      const reply = msg.interactive?.button_reply?.id || text;
+      await continueFlowByUserReply(userPhone, reply);
+      return res.sendStatus(200);
+    }
+
+    // Trigger flow by keyword
+    const flows = await Flow.find({ tenantId, isActive: true, "triggers.keywords": { $exists: true, $ne: [] } });
     for (const flow of flows) {
-      if (flow.triggers.keywords.some(kw => incomingLower === kw.toLowerCase())) {
+      if (flow.triggers.keywords.some(kw => text.trim().toLowerCase() === kw.toLowerCase())) {
         await startFlow(flow._id, userPhone);
         return res.sendStatus(200);
       }
     }
 
-    if (tenant.defaultFlowId) {
-      await startFlow(tenant.defaultFlowId, userPhone);
-    }
+    if (tenant.defaultFlowId) await startFlow(tenant.defaultFlowId, userPhone);
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Webhook error:", err);
+    console.error("Webhook error:", err.response?.data || err);
     res.sendStatus(500);
   }
 });
 
-// === Socket.io: Per-Tenant Rooms + Typing ===
-const typingStatus = new Map(); // tenantId → userPhone → { typing, lastSeen }
-
+// === Socket.IO ===
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-
-  socket.on("joinTenant", (tenantId) => {
-    socket.join(`tenant_${tenantId}`);
-    console.log(`Socket ${socket.id} joined tenant_${tenantId}`);
-  });
-
-  socket.on("typing", ({ tenantId, userPhone }) => {
-    const room = `tenant_${tenantId}`;
-    if (!typingStatus.has(tenantId)) typingStatus.set(tenantId, {});
-    typingStatus.get(tenantId)[userPhone] = { typing: true, lastSeen: new Date() };
-    io.to(room).emit("typingUpdate", typingStatus.get(tenantId));
-  });
-
-  socket.on("stopTyping", ({ tenantId, userPhone }) => {
-    const room = `tenant_${tenantId}`;
-    const tenantTyping = typingStatus.get(tenantId);
-    if (tenantTyping?.[userPhone]) {
-      tenantTyping[userPhone] = { typing: false, lastSeen: new Date() };
-      io.to(room).emit("typingUpdate", tenantTyping);
-    }
-  });
-
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-  });
+  socket.on("joinTenant", (tenantId) => socket.join(`tenant_${tenantId}`));
 });
 
-// === Start Server ===
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
-// utils/whatsapp.js or at bottom of server.js
-export const sendProductList = async (userPhone, products, tenantPhoneId) => {
-  // CRITICAL: Clean the product objects + fix fields
-  const cleanProducts = products.map(p => ({
-    _id: p._id.toString(),
-    name: (p.name || "Unnamed Product").slice(0, 20),
-    price: p.price || 0,
-    description: p.description || "No description",
-  }));
-
-  const payload = {
-    messaging_product: "whatsapp",
-    to: userPhone,
-    type: "interactive",
-    interactive: {
-      type: "list",
-      header: { type: "text", text: "RegalMints Store" },
-      body: { text: "Choose your favourite product" },
-      footer: { text: "Secure Payment – Fast Delivery" },
-      action: {
-        button: "View Products",
-        sections: [
-          {
-            title: "Available Items",
-            rows: cleanProducts.map(p => ({
-              id: `BUY_${p._id}`,
-              title: p.name,
-              description: `₹${p.price} • ${p.description.slice(0, 55)}`,
-            })),
-          },
-        ],
-      },
-    },
-  };
-
-  return axios.post(
-    `https://graph.facebook.com/v24.0/${tenantPhoneId}/messages`,
-    payload,
-    {
-      headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` },
-    }
-  );
-};
