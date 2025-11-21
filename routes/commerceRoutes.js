@@ -47,7 +47,7 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
       items,
       amount,
       tenantId,
-      razorpayOrderId: paymentLink.id,
+      razorpayOrderId: paymentLink.order_id,
       status: "pending",
     });
 
