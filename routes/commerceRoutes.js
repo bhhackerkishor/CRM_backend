@@ -39,7 +39,6 @@ console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RA
       customer: { contact: phone },
       description: "Order Payment",
       create_order: true,               // ← create a Razorpay order (order_xxx)
-      notes: { localOrderId: String(localOrder._id) },
       notify: { sms: true, email: false, whatsapp: false }
     });
     
