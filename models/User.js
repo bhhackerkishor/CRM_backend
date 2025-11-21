@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ["admin", "manager", "agent", "billing"], default: "agent" },
   status: { type: String, enum: ["active", "invited", "suspended"], default: "active" },
   createdAt: { type: Date, default: Date.now },
+  hasOnboarded: { type: Boolean, default: false }, // ← ADD THIS
 });
 
 // Hash password

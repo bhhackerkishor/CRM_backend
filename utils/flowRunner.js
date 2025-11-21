@@ -9,36 +9,67 @@ import axios from "axios";
 import mongoose from "mongoose";
 
 async function sendText(tenant, to, text) {
-  console.log(tenant, to, text)
+  
   const res =await axios.post(`https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`, {
     messaging_product: "whatsapp", to, type: "text", text: { body: text }
   }, { headers: { Authorization:`Bearer ${tenant.accessToken}` } });
 
-  console.log(res)
+  
 
   await Message.create({ tenantId: tenant._id, from: tenant.phoneNumberId, to, message: text, direction: "outbound", status: "sent" });
 }
 
 async function sendInteractive(tenant, to, data) {
   console.log("sendInteractive")
+  
 
-  const payload = {
-    messaging_product: "whatsapp",
-    to,
-    type: "interactive",
-    interactive: {
-      type: "button",
-      header: data.image ? { type: "image", image: { link: data.image } } : undefined,
-      body: { text: data.title || "Choose an option" },
-      action: { buttons: data.buttons.map((b,i)=>({ type:"reply", reply:{ id:`btn-${i}`, title:b } })) }
-    }
-  };
-  //console.log(tenant, to, data)
-  const response= await axios.post(`https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`, payload, { headers:{ Authorization:`Bearer ${tenant.accessToken}` }});
-  console.log(response.data)
+  try {
+    const payload = {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        header: data.image ? { type: "image", image: { link: data.image } } : undefined,
+        body: { text: data.title || "Choose an option" },
+        action: {
+          buttons: data.buttons.map((b, i) => ({
+            type: "reply",
+            reply: { id: `btn-${i}`, title: b },
+          }))
+        }
+      }
+    };
+  
+    const response = await axios.post(
+      `https://graph.facebook.com/v20.0/${tenant.phoneNumberId}/messages`,
+      payload,
+      { headers: { Authorization: `Bearer ${tenant.accessToken}` } }
+    );
+  
+    console.log("WhatsApp API Success:", response.data);
+    
   await Message.create({ tenantId: tenant._id, from: tenant.phoneNumberId, to, message: data.title, direction: "outbound", status: "sent", media: data.image || null });
-}
 
+
+    return response.data;
+  
+  } catch (error) {
+    console.error("WhatsApp API Error");
+  
+    if (error.response) {
+      console.error("Status Code:", error.response.status);
+      console.error("Response Data:", error.response.data);
+    } else if (error.request) {
+      console.error("No response from API:", error.request);
+    } else {
+      console.error("Request setup error:", error.message);
+    }
+  
+    throw error; // optional: rethrow if needed
+  }
+  
+}
 export async function startFlow(flowId, userPhone) {
   console.log(flowId, userPhone)
   const flow = await Flow.findById(flowId);
@@ -67,7 +98,15 @@ export async function startFlow(flowId, userPhone) {
 async function runFlowStep(flow, run, tenant, userPhone, startNode) {
   let current = startNode;
   
-  while (current) {
+  let safetyCounter = 0;
+while (current) {
+  if (++safetyCounter > 200) {
+    console.error("Flow stopped due to infinite loop");
+    run.status = "error";
+    await run.save();
+    return;
+  }
+
     console.log(current.type)
     run.currentNodeId = current.id;
     run.updatedAt = Date.now();
@@ -143,8 +182,10 @@ async function runFlowStep(flow, run, tenant, userPhone, startNode) {
 
       // 7️⃣ Input node (expect user text)
       case "capture":
+        await sendText(tenant, userPhone, resolveVariables(data.prompt, run.context));
         run.status = "waiting";
         run.context.waitingNodeId = current.id;
+        run.expiresAt = Date.now() + 30 * 60 * 1000 // 30 mins
         run.context.waitingFor = "text_reply";
         run.markModified("context");
         await run.save();
@@ -236,93 +277,6 @@ function findInputNextNode(flow, run, text) {
 
 
 
- 
-
-// continue from button press
-export async function continueFlowFromButton(userPhone, replyId) {
-  console.log("➡️ Continue flow for user:", userPhone, "replyId:", replyId);
-
-  // 1. Find waiting run
-  const run = await FlowRun.findOne({ userPhone, status: "waiting" })
-    .sort({ updatedAt: -1 });
-
-  if (!run) {
-    console.log("❌ No waiting flow run for this user");
-    return;
-  }
-
-  const flow = await Flow.findById(run.flowId);
-  const tenant = await Tenant.findById(run.tenantId);
-
-  if (!flow || !tenant) {
-    console.log("❌ Flow or tenant missing");
-    return;
-  }
-
-  console.log("🟡 Waiting at node:", run.context.waitingNodeId);
-
-  // 2. Find button → nextNode mapping
-  const match = flow.edges.find(
-    e =>
-      e.source === run.context.waitingNodeId &&
-      e.sourceHandle === replyId
-  );
-
-  if (!match) {
-    console.log("⚠️ No edge found for:", replyId);
-    return;
-  }
-
-  // 3. Load next node
-  let current = flow.nodes.find(n => n.id === match.target);
-  if (!current) {
-    console.log("❌ next node missing");
-    return;
-  }
-
-  // 4. Set running mode
-  run.status = "running";
-  run.currentNodeId = current.id;
-  run.context.waitingFor = null;
-  run.context.waitingNodeId = null;
-  run.markModified("context");
-  await run.save();
-
-  console.log("▶️ Continuing with node:", current.type);
-
-  // 5. LOOP just like runFlowById()
-  while (current) {
-    const result = await executeNode(flow, run, tenant, userPhone, current);
-
-    // stop flow if node waits (mediaButtons)
-    if (result?.stop) {
-      console.log("⏸️ Node entered waiting mode:", current.type);
-      return;
-    }
-
-    // find next sequential edge (only edges without sourceHandle)
-    const nextEdge = flow.edges.find(
-      e => e.source === current.id && !e.sourceHandle
-    );
-
-    current = nextEdge
-      ? flow.nodes.find(n => n.id === nextEdge.target)
-      : null;
-
-    if (current) {
-      run.currentNodeId = current.id;
-      run.updatedAt = Date.now();
-      await run.save();
-    }
-  }
-
-  // end of flow
-  run.status = "finished";
-  await run.save();
-  console.log("✅ Flow finished for", userPhone);
-}
-
-
 // Example helper - add to cart
 async function addToCart(tenantId, userPhone, productId, qty=1) {
   const prod = await Product.findById(productId);
@@ -385,58 +339,7 @@ async function createOrderAndSendPaymentLink(tenant, userPhone, config) {
 
   return order;
 }
-async function executeNode(flow, run, tenant, to, node) {
-  console.log(node.type)
-  switch (node.type) {
-    case "message":
-      await sendText(tenant, to, resolveVariables(node.data.label, run.context));
-      break;
 
-    case "mediaButtons":
-      console.log("workingsendInteractive")
-      const newData = {
-        ...node.data,
-        title: resolveVariables(node.data.title, run.context),
-      };
-      console.log("workingsendInteractivemid")
-      await sendInteractive(tenant, to, newData);
-
-      run.status = "waiting";
-      run.context.waitingNodeId = node.id;
-      run.context.waitingFor = "button_reply";
-      run.markModified('context'); //to change the context in a indirect
-      console.log("workingsendInteractiveend")
-      await run.save();
-      return { stop: true };
-
-      case "condition":
-  const result = evaluateCondition(node, run.context);
-  const branch = result ? "true" : "false";
-  const nextEdge = flow.edges.find(
-    (e) => e.source === node.id && e.sourceHandle === branch
-  );
-  return { nextEdge };
-
-    case "wait":
-      const ms = node.data.ms || 2000;
-      await new Promise((res) => setTimeout(res, ms));
-      break;
-
-    case "call_api":
-      try {
-        await axios.post(node.data.url, { user: to, ctx: run.context });
-      } catch (err) {
-        console.log("API call failed", err.message);
-      }
-      break;
-
-    case "set_tag":
-      run.context[node.data.key] = node.data.value;
-      await run.save();
-      break;
-  }
-  return {};
-}
 function resolveVariables(text, context) {
   if (!text || typeof text !== "string") return text;
   return text.replace(/\{\{(.*?)\}\}/g, (_, key) => {

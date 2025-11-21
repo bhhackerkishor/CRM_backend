@@ -7,40 +7,43 @@ const EXPIRES_IN = "7d";
 
 const signToken = (id) => jwt.sign({ id }, JWT_SECRET, { expiresIn: EXPIRES_IN });
 
+// backend/controllers/authController.js
 export const signup = async (req, res) => {
   const { businessName, whatsappNumber, name, email, password } = req.body;
 
   try {
-    // Create tenant
-    const tenant = await Tenant.create({ businessName, whatsappNumber });
+    const tenant = await Tenant.create({
+      businessName,
+      whatsappNumber,
+      status: "pending"
+    });
 
-    // Create admin user
     const user = await User.create({
       tenantId: tenant._id,
       name,
       email,
       password,
       role: "admin",
+      hasOnboarded: false  // ← important
     });
 
     const token = signToken(user._id);
 
     res.status(201).json({
-      message: "Tenant and admin created",
+      success: true,
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
         tenantId: tenant._id,
-      },
+        hasOnboarded: false
+      }
     });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ success: false, message: err.message });
   }
 };
-
 export const login = async (req, res) => {
   console.log(req.body,"SOmeone truing to login")
   const { email, password } = req.body;
@@ -53,7 +56,7 @@ export const login = async (req, res) => {
   if (!user || !(await user.comparePassword(password))) {
     return res.status(401).json({ message: "Invalid email or password" });
   }
-
+  
   const token = signToken(user._id);
   console.log(user)
 
