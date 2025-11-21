@@ -26,6 +26,9 @@ router.get("/products", async (req, res) => {
 
 // === 2. CREATE ORDER + SEND PAYMENT LINK ===
 router.post("/order", async (req, res) => {
+  console.log("Incoming Order Request:", req.body);
+console.log("Razorpay Credentials:", process.env.RAZORPAY_KEY_ID, process.env.RAZORPAY_KEY_SECRET ? "exists" : "missing");
+
   try {
     const { phone, items, tenantId } = req.body;
     const amount = items.reduce((total, i) => total + (i.price * i.qty), 0);
@@ -35,9 +38,9 @@ router.post("/order", async (req, res) => {
       currency: "INR",
       customer: { contact: phone },
       description: "Order Payment",
-      callback_url: `${process.env.SERVER_URL}/api/v1/commerce/verify`,
-      callback_method: "get",
+      notify: { sms: true, email: false }
     });
+    
 
     const order = await Order.create({
       phone,
@@ -63,6 +66,7 @@ router.post("/order", async (req, res) => {
 
     res.json({ success: true, order });
   } catch (err) {
+    
     console.log("Order error:", err);
     res.status(500).json({ error: "Failed to create order" });
   }
