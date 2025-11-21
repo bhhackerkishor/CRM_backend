@@ -67,44 +67,41 @@ app.use("/api/v1/commerce", commerceRoutes);
 startScheduler();
 
 // === SEND CAROUSEL WITH IMAGES ===
-const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
-  const items = products.slice(0, 10); // Max 10 cards
+const sendProductFeed = async (userPhone, products, phoneNumberId) => {
+  const items = products.slice(0, 10); // Limit to 10
 
-  const cards = items.map(p => ({
-    card_index: items.indexOf(p),
-    header: {
-      type: "image",
-      image: {
-        link: p.image || "https://via.placeholder.com/400x300.png?text=No+Image",
-      },
-    },
-    body: {
-      text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`,
-    },
-    footer: { text: "In Stock • Fast Delivery" },
-    action: {
-      buttons: [
-        {
-          type: "reply",
-          reply: {
-            id: `BUY_${p._id}`,
-            title: "Buy Now",
+  for (const p of items) {
+    await axios.post(
+      `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: userPhone,
+        type: "interactive",
+        interactive: {
+          type: "button",  // ← Valid type
+          header: {        // ← Full image here
+            type: "image",
+            image: { link: p.image || "https://via.placeholder.com/400x300?text=No+Image" },
           },
+          body: {
+            text: `*${p.name}*\n\n₹${p.price}\n${(p.description || "Great product!").slice(0, 100)}\n\nTap to buy now 👇`,
+          },
+          action: {
+            buttons: [
+              {
+                type: "reply",
+                reply: { id: `BUY_${p._id}`, title: "Buy Now" },
+              },
+            ],
+          },
+          footer: { text: "Secure Payment • Fast Shipping" },
         },
-      ],
-    },
-  }));
-
-  await axios.post(
-    `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: userPhone,
-      type: "interactive",
-      interactive: { type: "carousel", cards },
-    },
-    { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
-  );
+      },
+      { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
+    );
+    // Small delay to avoid rate limits (optional)
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
 };
 
 // === WhatsApp Webhook Verification ===
@@ -183,8 +180,8 @@ app.post("/api/webhook", async (req, res) => {
 
     // === 3. User says "hi" → Show Products with Images ===
     if (text.trim().toLowerCase() === "hi") {
-      const products = await Product.find({ tenantId }); // or .find({}) if global
-      await sendProductCarousel(userPhone, products, phoneNumberId);
+      const products = await Product.find({ tenantId });
+      await sendProductFeed(userPhone, products, phoneNumberId);
       return res.sendStatus(200);
     }
 
