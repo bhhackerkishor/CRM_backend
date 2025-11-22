@@ -140,35 +140,53 @@ app.post("/api/webhook", async (req, res) => {
       { upsert: true, new: true }
     );
 
+
+
     // === Extract Message Text ===
     const text =
       msg.text?.body ||
       msg.interactive?.button_reply?.title ||
       "[Media/Unsupported]";
 
+      // === Save Message with Contact ID ===
+    const message = await Message.create({
+      tenantId,
+      contact: contact._id, // ← Critical for populate
+      from: userPhone,
+      to: tenantPhoneId,
+      message: text,
+      direction: "inbound",
+      status: "delivered",
+      timestamp: new Date(),
+    });
+
+    // === Emit to tenant room ===
+    io.to(`tenant_${tenantId}`).emit("newMessage", message);
+
       // Handle list reply
-if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
-  const productId = msg.interactive.list_reply.id.replace("BUY_", "");
+   if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
+    const productId = msg.interactive.list_reply.id.replace("BUY_", "");
 
-  const product = await Product.findById(productId);
-  if (!product) {
-    await sendMessage(userPhone, tenantPhoneId, "Product not available.");
-    return res.sendStatus(200);
-  }
-
-  // Create order
-  await axios.post(
-    `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
-    {
-      phone: userPhone,
-      tenantId: tenant._id,
-      items: [{ name: product.name, price: product.price, qty: 1 }],
+    const product = await Product.findById(productId);
+    if (!product) {
+      await sendMessage(userPhone, tenantPhoneId, "Product not available.");
+      return res.sendStatus(200);
     }
-  );
 
-  return res.sendStatus(200);
-}
+      // Create order
+      await axios.post(
+        `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
+        {
+          phone: userPhone,
+          tenantId: tenant._id,
+          items: [{ name: product.name, price: product.price, qty: 1 }],
+        }
+      );
 
+      return res.sendStatus(200);
+    }
+
+  
       if (msg.interactive?.button_reply?.id === "PAY_NOW") {
         // Find the latest pending order for this user
         const pendingOrder = await Order.findOne({
@@ -195,45 +213,62 @@ if (msg.interactive?.list_reply?.id?.startsWith("BUY_")) {
         return res.sendStatus(200);
       }
       // SAMPLE: If user types 'hi' → send product list
-if (text.trim().toLowerCase() === "hi") {
-  const products = await Product.find({});
-  const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
+      const products = await Product.find({});
+    if (text.trim().toLowerCase() === "hi") {
+  
+        userPages.set(userPhone, 0);
+        const phoneNumberId = tenant?.phoneNumberId || process.env.PHONE_NUMBER_ID;
 
-  await sendProductCarousel(userPhone, products, phoneNumberId);
+        await sendProductPage(userPhone, products, phoneNumberId);
 
-  return res.sendStatus(200);
-}
+        return res.sendStatus(200);
+      }
 
-// SAMPLE: Detect BUY Command
-if (text.toLowerCase().startsWith("buy")) {
-  const productIndex = parseInt(text.split(" ")[1]) - 1;
+// Pagination logic based on reply button ID
+    if (msg.interactive?.button_reply?.id) {
+      const buttonId = msg.interactive.button_reply.id;
 
-  const products = await Product.find({});
-  const product = products[productIndex];
-
-  if (!product) {
-    await sendMessage(userPhone, tenantPhoneId, "Invalid product number.");
-    return res.sendStatus(200);
-  }
-
-  // Create a sample order via commerce route
-  const orderResp = await axios.post(
-    "https://crm-backend-c54a.onrender.com/api/v1/commerce/order",
-    {
-      phone: userPhone,
-      tenantId: tenant._id,
-      items: [
-        {
-          name: product.name,
-          price: product.price,
-          qty: 1,
-        },
-      ],
+      if (buttonId === "NEXT_PAGE") {
+        userPages.set(userPhone, (userPages.get(userPhone) || 0) + 1);
+        await sendProductPage(userPhone, products, tenantPhoneId);
+        return res.sendStatus(200);
+      }
+      if (buttonId === "PREV_PAGE") {
+        userPages.set(
+          userPhone,
+          Math.max((userPages.get(userPhone) || 0) - 1, 0)
+        );
+        await sendProductPage(userPhone, products, tenantPhoneId);
+        return res.sendStatus(200);
+      }
     }
-  );
+// SAMPLE: Detect BUY Command
+if (buttonId.startsWith("BUY_")) {
+        const productIndex = parseInt(buttonId.split("_")[1], 10);
+        const product = products[productIndex];
+        if (!product) {
+          await sendMessage(userPhone, tenantPhoneId, "Invalid product selected.");
+          return res.sendStatus(200);
+        }
 
-  return res.sendStatus(200);
-}
+        // Create order or proceed accordingly
+        await axios.post(
+          `${process.env.BACKEND_URL || "http://localhost:5000"}/api/v1/commerce/order`,
+          {
+            phone: userPhone,
+            tenantId: tenant._id,
+            items: [{ name: product.name, price: product.price, qty: 1 }],
+          }
+        );
+
+        await sendMessage(
+          userPhone,
+          tenantPhoneId,
+          `Order placed for *${product.name}*. Thank you!`
+        );
+        return res.sendStatus(200);
+      }
+    
 
 
 
@@ -263,20 +298,7 @@ if (text.trim().toLowerCase() === "done") {
 }
 
 
-    // === Save Message with Contact ID ===
-    const message = await Message.create({
-      tenantId,
-      contact: contact._id, // ← Critical for populate
-      from: userPhone,
-      to: tenantPhoneId,
-      message: text,
-      direction: "inbound",
-      status: "delivered",
-      timestamp: new Date(),
-    });
-
-    // === Emit to tenant room ===
-    io.to(`tenant_${tenantId}`).emit("newMessage", message);
+    
 
     // === Flow Logic ===
     const waitingRun = await FlowRun.findOne({
@@ -357,86 +379,88 @@ server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 
-const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
-  try {
-    const items = (products || []).slice(0, 10); // max 10 cards
 
-    if (items.length < 2) {
-      throw new Error("WhatsApp carousel requires at least 2 cards.");
-    }
 
-    const cards = items.map((p, index) => ({
-      card_index: String(index), // usually treated as string in many SDKs
-      components: [
-        {
-          type: "header",
-          parameters: [
-            {
-              type: "image",
-              image: {
-                link:
-                  p.image ||
-                  "https://via.placeholder.com/400x300.png?text=No+Image",
-              },
-            },
-          ],
-        },
-        {
-          type: "body",
-          parameters: [
-            {
-              type: "text",
-              text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(
-                0,
-                60
-              )}`,
-            },
-          ],
-        },
-        // no footer component here – that was causing the error
-        {
-          type: "button",
-          sub_type: "quick_reply",
-          index: "0",
-          parameters: [
-            {
-              type: "payload",
-              payload: `BUY_${p._id}`,
-            },
-          ],
-        },
-      ],
-    }));
+const userPages = new Map(); // track user phone → current page
+const PAGE_SIZE = 3;
 
-    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+async function sendProductPage(userPhone, products, phoneNumberId) {
+  const page = userPages.get(userPhone) || 0;
+  const startIdx = page * PAGE_SIZE;
+  const endIdx = startIdx + PAGE_SIZE;
+  const pageItems = products.slice(startIdx, endIdx);
 
-    const payload = {
-      messaging_product: "whatsapp",
-      to: userPhone,
-      type: "interactive",
-      interactive: {
-        type: "carousel",
-        body: {
-          text: "Check out these products",
-        },
-        action: {
-          cards,
-        },
-      },
-    };
-
-    const headers = {
-      Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.post(url, payload, { headers });
-    return response.data;
-  } catch (err) {
-    console.error(
-      "Error sending product carousel:",
-      err.response?.data || err.message
-    );
-    throw err;
+  if (pageItems.length === 0) {
+    userPages.set(userPhone, 0);
+    await sendMessage(userPhone, phoneNumberId, "No more products.");
+    return;
   }
-};
+
+  // Send each product's image + caption separately (sequentially)
+  for (const p of pageItems) {
+    const caption = `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`;
+    await sendImageWithCaption(userPhone, phoneNumberId, p.image, caption);
+  }
+
+  // Compose buttons for buy + pagination (limit to 3 buttons)
+  const buttons = pageItems.map((p, idx) => ({
+    type: "reply",
+    reply: { id: `BUY_${startIdx + idx}`, title: `Buy ${startIdx + idx + 1}` },
+  }));
+
+  if (page > 0 && buttons.length < 3) {
+    buttons.push({ type: "reply", reply: { id: "PREV_PAGE", title: "Previous" } });
+  }
+  if (endIdx < products.length && buttons.length < 3) {
+    buttons.push({ type: "reply", reply: { id: "NEXT_PAGE", title: "Next" } });
+  }
+
+  const bodyText = `Tap a button below to buy or navigate products:`;
+
+  const interactivePayload = {
+    messaging_product: "whatsapp",
+    to: userPhone,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: bodyText },
+      action: { buttons },
+    },
+  };
+
+  const headers = {
+    Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+    "Content-Type": "application/json",
+  };
+
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+    interactivePayload,
+    { headers }
+  );
+}
+
+async function sendImageWithCaption(userPhone, phoneNumberId, imageUrl, caption) {
+  if (!imageUrl) imageUrl = "https://via.placeholder.com/400x300.png?text=No+Image";
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: userPhone,
+    type: "image",
+    image: {
+      link: imageUrl,
+      caption: caption,
+    },
+  };
+
+  const headers = {
+    Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+    "Content-Type": "application/json",
+  };
+
+  await axios.post(
+    `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`,
+    payload,
+    { headers }
+  );
+}
