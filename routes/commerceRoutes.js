@@ -89,12 +89,16 @@ router.post("/order", async (req, res) => {
           action: {
             buttons: [
               {
-                type: "reply",  // ← THIS IS THE ONLY VALID TYPE
-                reply: {
-                  id: "PAY_NOW",
-                  title: `Pay ₹${amount}`,
-                },
-              },
+                type: "call_to_action",
+                sub_type: "url",
+                index: "1",
+                parameters: [
+                  {
+                    type: "text",
+                    text: paymentLink.short_url // Your dynamic payment URL here
+                  }
+                ]
+              }
             ],
           },
           footer: { text: "Secure payment – Razorpay" },
