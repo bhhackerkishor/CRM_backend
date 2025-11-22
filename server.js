@@ -359,42 +359,53 @@ server.listen(PORT, () => {
 
 const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
   try {
-    const items = (products || []).slice(0, 10); // WhatsApp max 10 cards
+    const items = (products || []).slice(0, 10); // max 10 cards
 
     if (items.length < 2) {
       throw new Error("WhatsApp carousel requires at least 2 cards.");
     }
 
     const cards = items.map((p, index) => ({
-      // card_index is implicit by position in the array on Cloud API;
-      // index kept here for reference if you need it elsewhere.
-      card_index: index,
-      header: {
-        type: "image",
-        image: {
-          link: p.image || "https://via.placeholder.com/400x300.png?text=No+Image"
-        }
-      },
-      body: {
-        // keep body reasonably short (API has length limits)
-        text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`
-      },
-      footer: {
-        text: "In Stock • Fast Delivery"
-      },
-      // For carousels, buttons are usually quick replies or CTAs.
-      // WhatsApp expects "buttons" directly under "action" for carousel cards.
-      action: {
-        buttons: [
-          {
-            type: "reply",
-            reply: {
-              id: `BUY_${p._id}`,
-              title: "Buy Now"
-            }
-          }
-        ]
-      }
+      card_index: String(index), // usually treated as string in many SDKs
+      components: [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: {
+                link:
+                  p.image ||
+                  "https://via.placeholder.com/400x300.png?text=No+Image",
+              },
+            },
+          ],
+        },
+        {
+          type: "body",
+          parameters: [
+            {
+              type: "text",
+              text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(
+                0,
+                60
+              )}`,
+            },
+          ],
+        },
+        // no footer component here – that was causing the error
+        {
+          type: "button",
+          sub_type: "quick_reply",
+          index: "0",
+          parameters: [
+            {
+              type: "payload",
+              payload: `BUY_${p._id}`,
+            },
+          ],
+        },
+      ],
     }));
 
     const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
@@ -406,23 +417,26 @@ const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
       interactive: {
         type: "carousel",
         body: {
-          text: "Check out these products"
+          text: "Check out these products",
         },
         action: {
-          cards
-        }
-      }
+          cards,
+        },
+      },
     };
 
     const headers = {
       Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     };
 
     const response = await axios.post(url, payload, { headers });
     return response.data;
   } catch (err) {
-    console.error("Error sending product carousel:", err.response?.data || err.message);
+    console.error(
+      "Error sending product carousel:",
+      err.response?.data || err.message
+    );
     throw err;
   }
 };
