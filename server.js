@@ -241,7 +241,7 @@ app.post("/api/webhook", async (req, res) => {
         await sendProductPage(userPhone, products, tenantPhoneId);
         return res.sendStatus(200);
       }
-    }
+    
 // SAMPLE: Detect BUY Command
 if (buttonId.startsWith("BUY_")) {
         const productIndex = parseInt(buttonId.split("_")[1], 10);
@@ -269,7 +269,7 @@ if (buttonId.startsWith("BUY_")) {
         return res.sendStatus(200);
       }
     
-
+    }
 
 
       // Detect Payment Confirmation
