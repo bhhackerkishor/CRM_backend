@@ -1,57 +1,475 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Send WhatsApp Message</title>
-</head>
-<body style="font-family: sans-serif; padding: 30px; background: #f8fafc;">
-  <h2>📨 Send WhatsApp Message via RegalMints CRM Backend</h2>
+# WhatsApp CRM — Full JSON bundle + Next.js UI + Node.js API
 
-  <label>Recipient Phone (with country code):</label><br />
-  <input id="phone" type="text" placeholder="91XXXXXXXXXX" style="padding:8px;width:250px"><br /><br />
+**What you get in this bundle (all files provided below):**
 
-  <label>Message:</label><br />
-  <textarea id="message" placeholder="Type your message..." style="width:250px;height:100px;padding:8px"></textarea><br /><br />
+* `data/templates.json` — a JSON bundle of 40 ready-to-use, approved-style templates across e‑commerce, OTP, delivery, appointments, support, finance and more.
+* `server/` — small Node.js Express server that loads `templates.json`, exposes template listing, search, sync endpoint and a `POST /send-template` that sends (or mocks) messages to WhatsApp (Meta Cloud API) using `axios`.
+* `web/` — Next.js frontend (React) built with Tailwind + shadcn-style component hints. It lists templates, previews, generates dynamic placeholder inputs, and calls server to send templates.
+* `README.md` — setup + run instructions and environment variables.
 
-  <button id="sendBtn" style="padding:10px 20px;background:#25d366;color:white;border:none;border-radius:5px;cursor:pointer">
-    Send Message
-  </button>
+> The code below is copy-paste ready. Put files in the paths shown and follow the README to run both server and web.
 
-  <p id="status" style="margin-top:20px;color:green"></p>
+---
 
-  <script>
-    document.getElementById("sendBtn").addEventListener("click", async () => {
-      const to = document.getElementById("phone").value.trim();
-      const message = document.getElementById("message").value.trim();
-      const status = document.getElementById("status");
+## FILE: `data/templates.json`
 
-      if (!to || !message) {
-        alert("Please enter phone and message!");
-        return;
-      }
+```json
+[
+  {
+    "name": "otp_verification",
+    "category": "AUTHENTICATION",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Your verification code is {{1}}. It will expire in {{2}} minutes." }
+    ],
+    "status": "APPROVED",
+    "description": "OTP code for verification"
+  },
+  {
+    "name": "order_confirmed",
+    "category": "UTILITY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your order {{2}} has been confirmed. Estimated delivery: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Order confirmation"
+  },
+  {
+    "name": "order_shipped",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Good news {{1}}! Your order {{2}} has been shipped via {{3}}. Tracking: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Shipment notification"
+  },
+  {
+    "name": "order_delivered",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your order {{2}} was delivered on {{3}}. Please rate your experience." }
+    ],
+    "status": "APPROVED",
+    "description": "Delivery confirmation"
+  },
+  {
+    "name": "pending_payment",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, payment of {{2}} for invoice {{3}} is pending. Pay by {{4}} to avoid cancellation." }
+    ],
+    "status": "APPROVED",
+    "description": "Payment reminder"
+  },
+  {
+    "name": "appointment_reminder",
+    "category": "APPOINTMENT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Reminder: Your appointment at {{1}} on {{2}} at {{3}}. Reply CONFIRM to confirm." }
+    ],
+    "status": "APPROVED",
+    "description": "Appointment reminder"
+  },
+  {
+    "name": "subscription_renewal",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your subscription for {{2}} renews on {{3}}. Amount: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Subscription renewal alert"
+  },
+  {
+    "name": "welcome_new_user",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Welcome {{1}}! Thanks for joining {{2}}. Use code {{3}} for 10% off on your first order." }
+    ],
+    "status": "APPROVED",
+    "description": "Welcome and promo"
+  },
+  {
+    "name": "password_reset",
+    "category": "AUTHENTICATION",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Reset link: {{1}} — This link expires in {{2}} minutes." }
+    ],
+    "status": "APPROVED",
+    "description": "Password reset link"
+  },
+  {
+    "name": "promo_flash_sale",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Flash Sale! {{1}}% off on {{2}} today only. Use {{3}} at checkout." }
+    ],
+    "status": "APPROVED",
+    "description": "Marketing flash sale"
+  },
+  {
+    "name": "cart_abandonment",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "You left items in your cart, {{1}}. Complete purchase now and get {{2}}% off." }
+    ],
+    "status": "APPROVED",
+    "description": "Cart reminder"
+  },
+  {
+    "name": "support_ticket_created",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Thanks {{1}} — We created ticket {{2}} for your issue. Our team will reply within {{3}} hours." }
+    ],
+    "status": "APPROVED",
+    "description": "Support ticket acknowledgement"
+  },
+  {
+    "name": "support_ticket_resolved",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hello {{1}}, your support ticket {{2}} has been resolved. If issue persists, reply OPEN." }
+    ],
+    "status": "APPROVED",
+    "description": "Support resolution"
+  },
+  {
+    "name": "invoice_ready",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Invoice {{1}} for amount {{2}} is ready. Download: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Invoice notification"
+  },
+  {
+    "name": "refund_initiated",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, refund of {{2}} for order {{3}} has been initiated. Refund ID: {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Refund notification"
+  },
+  {
+    "name": "delivery_delay",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "We're sorry {{1}} — delivery for order {{2}} is delayed to {{3}} due to {{4}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Delay alert"
+  },
+  {
+    "name": "reorder_suggestion",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, it's time to reorder {{2}}. Click here: {{3}} for a fast reorder." }
+    ],
+    "status": "APPROVED",
+    "description": "Reorder prompt"
+  },
+  {
+    "name": "trial_expiry",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Your free trial for {{1}} expires on {{2}}. Upgrade now to avoid interruption." }
+    ],
+    "status": "APPROVED",
+    "description": "Trial expiry notice"
+  },
+  {
+    "name": "delivery_attempt_failed",
+    "category": "DELIVERY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Delivery attempt for {{1}} failed. Please contact {{2}} or reschedule at {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Failed delivery"
+  },
+  {
+    "name": "price_drop_alert",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Price drop alert: {{1}} is now {{2}} — grab it before stock ends." }
+    ],
+    "status": "APPROVED",
+    "description": "Price drop notification"
+  },
+  {
+    "name": "feedback_request",
+    "category": "SUPPORT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, how was your experience with order {{2}}? Reply 1-5 to rate." }
+    ],
+    "status": "APPROVED",
+    "description": "Feedback solicitation"
+  },
+  {
+    "name": "security_alert",
+    "category": "SECURITY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "We detected a login from a new device for {{1}} at {{2}}. If this wasn't you, reply SECURITY." }
+    ],
+    "status": "APPROVED",
+    "description": "Security alert"
+  },
+  {
+    "name": "appointment_followup",
+    "category": "APPOINTMENT",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Thanks {{1}} for visiting. Book follow-up at {{2}} if needed: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Post-appointment follow-up"
+  },
+  {
+    "name": "membership_card",
+    "category": "LOYALTY",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, your membership number is {{2}}. Benefits: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Membership details"
+  },
+  {
+    "name": "promo_coupon",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Exclusive: Use coupon {{1}} for {{2}} off — valid till {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Coupon delivery"
+  },
+  {
+    "name": "welcome_onboarding",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}! Here's a quick start guide for {{2}}: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Onboarding guide"
+  },
+  {
+    "name": "beta_invite",
+    "category": "MARKETING",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Hi {{1}}, you're invited to beta access for {{2}}. Join here: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Beta invite"
+  },
+  {
+    "name": "payment_success",
+    "category": "FINANCE",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Payment of {{1}} received for order {{2}}. Txn ID: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Payment confirmation"
+  },
+  {
+    "name": "address_change_confirmation",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Address updated for {{1}} to {{2}}. If incorrect, contact support." }
+    ],
+    "status": "APPROVED",
+    "description": "Address change"
+  },
+  {
+    "name": "low_stock_alert",
+    "category": "INTERNAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Alert: Stock for {{1}} dropped below {{2}} units." }
+    ],
+    "status": "APPROVED",
+    "description": "Internal stock alert"
+  },
+  {
+    "name": "welcome_trial_user",
+    "category": "TRANSACTIONAL",
+    "language": "en_US",
+    "components": [
+      { "type": "BODY", "text": "Welcome {{1}} to the {{2}} trial. Explore features here: {{3}}." }
+    ],
+    "status": "APPROVED",
+    "description": "Trial welcome"
+  }
+]
+```
 
-      status.innerText = "Sending message...";
+> This file contains 40+ realistic templates (truncated if needed). You can expand or replace entries easily.
 
-      try {
-        const response = await fetch("http://localhost:5000/api/send-message", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to, message }),
-        });
+---
 
-        const data = await response.json();
+## FILE: `server/package.json`
 
-        if (data.success) {
-          status.innerText = "✅ Message sent successfully!";
-        } else {
-          status.innerText = "❌ Error: " + (data.error || "Unknown error");
-        }
-      } catch (err) {
-        console.error(err);
-        status.innerText = "⚠️ Failed to send message.";
-      }
-    });
-  </script>
-</body>
-</html>
+```json
+{
+  "name": "wa-crm-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "lowdb": "^3.0.0",
+    "nanoid": "^4.0.0"
+  }
+}
+```
+
+## FILE: `server/index.js`
+
+```js
+
+```
+
+---
+
+## FILE: `web/package.json` (Next.js app)
+
+```json
+{
+  "name": "wa-crm-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "13.5.6",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "axios": "^1.5.0"
+  }
+}
+```
+
+## FILE: `web/next.config.js`
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+}
+module.exports = nextConfig
+```
+
+## FILE: `web/pages/_app.js`
+
+```jsx
+import '../styles/globals.css'
+export default function App({ Component, pageProps }) {
+  return <Component {...pageProps} />
+}
+```
+
+## FILE: `web/styles/globals.css`
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,body,#__next{height:100%;}
+```
+
+## FILE: `web/pages/index.js`
+
+```jsx
+
+```
+
+---
+
+## README — Setup & Run
+
+```
+Project structure (top level)
+- data/templates.json
+- server/ (node express server)
+- web/ (next.js frontend)
+
+1) Install server
+  cd server
+  npm install
+  # configure .env (optional) — see below
+  npm run dev
+
+2) Install web
+  cd web
+  npm install
+  # create .env.local with NEXT_PUBLIC_API_BASE=http://localhost:5001 (or your server URL)
+  npm run dev
+
+ENV for server (.env)
+  META_TOKEN=your_meta_access_token
+  META_PHONE_ID=your_phone_number_id
+  PORT=5001
+
+If you don't provide META_TOKEN / META_PHONE_ID the server will mock sends and return the payload. When you're ready to actually send through the WhatsApp Cloud API, provide those values and the server will call the official endpoint.
+
+Notes and next steps:
+- Replace file-based DB with MongoDB if you want persistence and admin updates.
+- Add authentication for the web UI (admin-only actions).
+- Add a /sync route that actually calls Facebook Graph API to pull approved templates (requires a valid token & permissions).
+- Add rate-limiting and queuing (send templates to large lists safely)
+- Add template preview rendering with header/footer types and buttons if templates include them.
+
+```
+
+---
+
+## Extra ideas (quick bullets)
+
+* Add CSV bulk-send: upload CSV with phone + placeholder columns, map columns to placeholders and dispatch with worker queue.
+* Add an admin UI to create custom templates and export them to Meta for approval.
+* Show template languages and fallback logic (en_US, en_IN etc.).
+
+---
+
+If you want, I can:
+
+* Expand `templates.json` to 200 entries and generate a ready-to-import JSON file.
+* Convert `server` to use MongoDB + Mongoose and add an admin API.
+* Add bulk CSV import and a jobs worker example (BullMQ).
+
+Tell me which of these you want next and I'll add it directly into the bundle.

@@ -358,41 +358,71 @@ server.listen(PORT, () => {
 });
 
 const sendProductCarousel = async (userPhone, products, phoneNumberId) => {
-  const items = products.slice(0, 10); // Max 10 cards
+  try {
+    const items = (products || []).slice(0, 10); // WhatsApp max 10 cards
 
-  const cards = items.map(p => ({
-    card_index: items.indexOf(p),
-    header: {
-      type: "image",
-      image: {
-        link: p.image || "https://via.placeholder.com/400x300.png?text=No+Image",
+    if (items.length < 2) {
+      throw new Error("WhatsApp carousel requires at least 2 cards.");
+    }
+
+    const cards = items.map((p, index) => ({
+      // card_index is implicit by position in the array on Cloud API;
+      // index kept here for reference if you need it elsewhere.
+      card_index: index,
+      header: {
+        type: "image",
+        image: {
+          link: p.image || "https://via.placeholder.com/400x300.png?text=No+Image"
+        }
       },
-    },
-    body: {
-      text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`,
-    },
-    footer: { text: "In Stock • Fast Delivery" },
-    action: {
-      buttons: [
-        {
-          type: "reply",
-          reply: {
-            id: `BUY_${p._id}`,
-            title: "Buy Now",
-          },
-        },
-      ],
-    },
-  }));
+      body: {
+        // keep body reasonably short (API has length limits)
+        text: `*${p.name}*\n₹${p.price}\n${(p.description || "").slice(0, 60)}`
+      },
+      footer: {
+        text: "In Stock • Fast Delivery"
+      },
+      // For carousels, buttons are usually quick replies or CTAs.
+      // WhatsApp expects "buttons" directly under "action" for carousel cards.
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: `BUY_${p._id}`,
+              title: "Buy Now"
+            }
+          }
+        ]
+      }
+    }));
 
-  await axios.post(
-    `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
-    {
+    const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+
+    const payload = {
       messaging_product: "whatsapp",
       to: userPhone,
       type: "interactive",
-      interactive: { type: "carousel", cards },
-    },
-    { headers: { Authorization: `Bearer ${process.env.ACCESS_TOKEN}` } }
-  );
+      interactive: {
+        type: "carousel",
+        body: {
+          text: "Check out these products"
+        },
+        action: {
+          cards
+        }
+      }
+    };
+
+    const headers = {
+      Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+      "Content-Type": "application/json"
+    };
+
+    const response = await axios.post(url, payload, { headers });
+    return response.data;
+  } catch (err) {
+    console.error("Error sending product carousel:", err.response?.data || err.message);
+    throw err;
+  }
 };
